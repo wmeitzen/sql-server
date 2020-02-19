@@ -1,9 +1,9 @@
 /*
 The SQL functions (below) and command (at the very bottom)
-enables you to output DROP and CREATE commands for all PKs, FKs, and
+generates DROP and CREATE commands for all PKs, FKs, and
 indexes in dependency order below a user-specified TABLE_NAME.
-It does not execute the DROP or CREATE commands; it only generates them.
-I used it to change datetime2 datatypes to datetime on a database with 11 levels of dependencies.
+It does not execute the DROP or CREATE commands; it only generates the TSQL code.
+I used it to change about 300 datetime2 columns to datetime on a database with 11 levels of dependencies.
 
 Function deps_it_depends:
 Given a schema, table name (as a starting point), and hard-coded 1,
@@ -16,7 +16,7 @@ for my use case.
 Function deps_generate_create_and_drop_index:
 Given a schema and index name or PK name, return the code to drop and create the object.
 
-Function deps_generate_create_and_drop_fk
+Function deps_generate_create_and_drop_fk:
 Given a schema and FK name, return the code to drop and create the object.
 */
 
