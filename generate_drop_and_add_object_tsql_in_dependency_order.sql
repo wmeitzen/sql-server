@@ -5,10 +5,13 @@ indexes in dependency order below a user-specified TABLE_NAME.
 It does not execute the DROP or CREATE commands; it only generates them.
 I used it to change datetime2 datatypes to datetime on a database with 11 levels of dependencies.
 
-Function dbo.deps_it_depends:
-Return a list of all database objects and dependencies.
+Function deps_it_depends:
+Given a schema, table name (as a starting point), and hard-coded 1,
+return a list of all database objects and dependencies.
 Slightly expanded from Phil Factor's code. (His method of gathering the dependencies
 is pretty ingenious!)
+The hard-coded 1 is to retrieve dependencies "upward," and 0 is "downward." I only used 1
+for my use case.
 
 Function deps_generate_create_and_drop_index:
 Given a schema and index name or PK name, return the code to drop and create the object.
