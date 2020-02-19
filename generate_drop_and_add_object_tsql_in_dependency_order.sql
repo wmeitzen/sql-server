@@ -516,12 +516,14 @@ go
 
 
 /*
-The SQL command below generates DROP and CREATE commands for all PKs, FKs, and indexes in dependency order below your specified TABLE_NAME.
+The SQL command below generates DROP and CREATE commands for all PKs, FKs, and
+indexes in dependency order below your specified TABLE_NAME.
 It does not execute the DROP or CREATE commands; it only generates them.
 I used it to change datetime2 datatypes to datetime on a database with 11 levels of dependencies.
 It worked pretty well for me, but I still suggest you test it on a backup of your target database first.
 You'll need to run the SELECT command twice: once to generate DROP commands, and once to generate CREATE commands.
-I recommend generating/copying/pasting DROP commands, enter your dependency change ("alter table TABLE_NAME alter column DATATYPE not null"),
+I recommend generating/copying/pasting DROP commands, enter your dependency change
+("alter table TABLE_NAME alter column DATATYPE not null"),
 generating/copying/pasting CREATE commands, saving the file, all before running the script.
 Step #:
 In SSMS / Query menu / Results to / Text.
