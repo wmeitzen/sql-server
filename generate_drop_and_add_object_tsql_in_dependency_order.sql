@@ -525,21 +525,21 @@ You'll need to run the SELECT command twice: once to generate DROP commands, and
 I recommend generating/copying/pasting DROP commands, enter your dependency change
 ("alter table TABLE_NAME alter column DATATYPE not null"),
 generating/copying/pasting CREATE commands, saving the file, all before running the script.
-Step #:
+Step 1:
 In SSMS / Query menu / Results to / Text.
 In SSMS / Query menu / Query options / Results / Text / 3000 (this should be enough).
-Step #:
+Step 2:
 Replace the deps_it_depends TABLE_NAME parameter with the table containing the
 dependendency (FK, PK, etc.) or datatype (int, datetime, varchar, etc.) you need to change.
-Step #:
+Step 3:
 Set the ID.iteration order to DESC if generating DROP commands.
 Set the ID.iteration order to ASC if generating CREATE commands.
-Step #:
+Step 4:
 Set the case / ID.ObjectType order to DESC if generating DROP commands.
 Set the case / ID.ObjectType order to ASC if generating CREATE commands.
-Step #:
+Step 5:
 Uncomment either the "create_command" or "drop_command" block.
-Step #:
+Step 6:
 Run the SELECT command.
 */
 select
