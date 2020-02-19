@@ -1,3 +1,22 @@
+/*
+The SQL functions (below) and command (at the very bottom)
+enables you to output DROP and CREATE commands for all PKs, FKs, and
+indexes in dependency order below a user-specified TABLE_NAME.
+It does not execute the DROP or CREATE commands; it only generates them.
+I used it to change datetime2 datatypes to datetime on a database with 11 levels of dependencies.
+
+Function dbo.deps_it_depends:
+Return a list of all database objects and dependencies.
+Slightly expanded from Phil Factor's code. (His method of gathering the dependencies
+is pretty ingenious!)
+
+Function deps_generate_create_and_drop_index:
+Given a schema and index name or PK name, return the code to drop and create the object.
+
+Function deps_generate_create_and_drop_fk
+Given a schema and FK name, return the code to drop and create the object.
+*/
+
 IF OBJECT_ID (N'dbo.deps_it_depends') IS NOT NULL
    DROP FUNCTION dbo.deps_it_depends
 GO
@@ -280,12 +299,12 @@ GO
 create function deps_generate_create_and_drop_index (@p_schema varchar(255), @p_index_name varchar(255))
 RETURNS @sql_commands TABLE (
     ObjectSchema VARCHAR(200)
-	,ObjectTableName varchar(200)
+    ,ObjectTableName varchar(200)
     ,ObjectName VARCHAR(200)
     ,IsPrimaryKey bit
     ,TypeDesc varchar(200)
     ,create_command varchar(max)
-	,drop_command varchar(max)
+    ,drop_command varchar(max)
 )
 as
 begin
