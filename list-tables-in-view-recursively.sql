@@ -19,5 +19,5 @@ inner join sys.schemas as S on O.[schema_id] = S.[schema_id]
 inner join sys.indexes as IDX ON O.[object_id] = IDX.[object_id]
 inner join sys.partitions as P on IDX.[object_id] = P.[object_id] and IDX.index_id = P.index_id
 inner join sys.allocation_units as A on P.[partition_id] = A.container_id
-where O.[TYPE_DESC] = 'USER_TABLE'
+where O.[type_desc] = 'USER_TABLE'
 group by S.[name], VT.table_name
