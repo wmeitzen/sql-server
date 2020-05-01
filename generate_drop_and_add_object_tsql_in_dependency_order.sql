@@ -566,7 +566,7 @@ Run the SELECT command.
 */
 
 declare @create_or_drop varchar(6) = 'drop' -- set to 'create' or 'drop'
-declare @table_name varchar(250) = 'STUDENT_CALENDAR_DATE' -- set to table name
+declare @table_name varchar(250) = 'your_table_name' -- set to table name
 
 if @create_or_drop = 'create'
 begin
