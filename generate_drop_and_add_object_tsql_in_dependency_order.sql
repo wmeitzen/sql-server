@@ -564,13 +564,14 @@ Uncomment either the "create_command" or "drop_command" block.
 Step 6:
 Run the SELECT command.
 */
-select
-/*ID.ObjectPath, ID.ObjectSchema, ID.ObjectName, ID.ObjectType
-, GCD.drop_command as drop_index, GCD.create_command as create_index
-, GFK.drop_command as drop_fk, GFK.create_command as create_fk
-*/
 
--- create_command
+declare @create_or_drop varchar(6) = 'drop' -- set to 'create' or 'drop'
+declare @table_name varchar(250) = 'STUDENT_CALENDAR_DATE' -- set to table name
+
+if @create_or_drop = 'create'
+begin
+	select
+	-- create_command
 '-- ' + ID.ObjectPath + '
 print ''' + cast(ID.iteration as varchar(5)) + ' / ' + replace(coalesce(GCD.create_command, GFK.create_command), '''', '''''') + '''
 go
@@ -578,10 +579,28 @@ go
 go
 
 '
-as create_command
+	as create_command
+	FROM dbo.deps_it_depends('dbo', @table_name, 1) as ID
+	outer apply dbo.deps_generate_create_and_drop_index(ID.ObjectSchema, ID.ObjectName) as GCD
+	outer apply dbo.deps_generate_create_and_drop_fk(ID.ObjectSchema, ID.ObjectName) as GFK
+	where @create_or_drop = 'create'
+		and (
+			(GCD.ObjectSchema = ID.ObjectSchema and GCD.ObjectName = ID.ObjectName)
+			or (GFK.ObjectSchema = ID.ObjectSchema and GFK.ObjectName = ID.ObjectName)
+		)
+	ORDER BY ID.iteration desc -- asc: drop order; desc: create order
+	,case
+		when ID.ObjectType = 'NCI' then 1 -- non-clustered index
+		when ID.ObjectType = 'CI' then 2 -- clustered index
+		when ID.ObjectType = 'F' then 3 -- fk
+	end desc -- asc: drop order; desc: create order
+	,ID.ObjectPath
+end
 
-/*
--- drop_command
+if @create_or_drop = 'drop'
+begin
+	select
+	-- drop_command
 '-- ' + ID.ObjectPath + '
 print ''' + cast(ID.iteration as varchar(5)) + ' / ' + replace(coalesce(GCD.drop_command, GFK.drop_command), '''', '''''') + '''
 go
@@ -589,20 +608,19 @@ go
 go
 
 '
-as drop_command
-*/
-FROM dbo.deps_it_depends('dbo', 'TABLE_NAME', 1) as ID
-outer apply dbo.deps_generate_create_and_drop_index(ID.ObjectSchema, ID.ObjectName) as GCD
-outer apply dbo.deps_generate_create_and_drop_fk(ID.ObjectSchema, ID.ObjectName) as GFK
-where (
-	(GCD.ObjectSchema = ID.ObjectSchema and GCD.ObjectName = ID.ObjectName)
-	or (GFK.ObjectSchema = ID.ObjectSchema and GFK.ObjectName = ID.ObjectName)
-)
-ORDER BY ID.iteration desc -- asc: drop order; desc: create order
-,case
-	when ID.ObjectType = 'NCI' then 1 -- non-clustered index
-	when ID.ObjectType = 'CI' then 2 -- clustered index
-	when ID.ObjectType = 'F' then 3 -- fk
-end desc -- asc: drop order; desc: create order
-,ID.ObjectPath
-
+	as drop_command
+	FROM dbo.deps_it_depends('dbo', @table_name, 1) as ID
+	outer apply dbo.deps_generate_create_and_drop_index(ID.ObjectSchema, ID.ObjectName) as GCD
+	outer apply dbo.deps_generate_create_and_drop_fk(ID.ObjectSchema, ID.ObjectName) as GFK
+	where @create_or_drop = 'drop' and (
+			(GCD.ObjectSchema = ID.ObjectSchema and GCD.ObjectName = ID.ObjectName)
+			or (GFK.ObjectSchema = ID.ObjectSchema and GFK.ObjectName = ID.ObjectName)
+		)
+	ORDER BY ID.iteration asc -- asc: drop order; desc: create order
+	,case
+		when ID.ObjectType = 'NCI' then 1 -- non-clustered index
+		when ID.ObjectType = 'CI' then 2 -- clustered index
+		when ID.ObjectType = 'F' then 3 -- fk
+	end asc -- asc: drop order; desc: create order
+	,ID.ObjectPath
+end
