@@ -136,7 +136,6 @@ INSERT  INTO @DatabaseDependencies ( ObjectSchemaName, ObjectName, ObjectType, D
 		from sys.foreign_key_columns as fkc
 		inner join sys.foreign_keys as fk on fkc.constraint_object_id = fk.object_id
 		group by fkc.referenced_object_id, fk.object_id, fk.name
-
 		-- end FK
 
 		-- begin indexes
@@ -286,12 +285,57 @@ WHILE @ii < 50 AND @rowcount > 0
     SELECT  @rowcount = @@rowcount
     SELECT  @ii = @ii + 1
   END
+  ;with cte_current_table_info as (
+		-- clustered index name and table name - cl index -> table
+		select object_schema_name(IDX.[object_id]) as [object_schema_name]
+		, IDX.name as [object_name]
+		, 'CI' as object_type
+		, object_schema_name(O.[object_id]) as table_schema
+		, OBJECT_NAME(O.[object_id]) as table_name
+		from sys.indexes as IDX
+		inner join sys.objects as O on IDX.[object_id] = O.[object_id]
+		where O.type_desc = 'USER_TABLE'
+		and IDX.type_desc = 'CLUSTERED'
+		and O.name = @ObjectName
+		-- nc index name and table name - nc index -> table
+		union
+		--( ObjectSchemaName, ObjectName, ObjectType, DependencyType, ReferredObjectSchema, ReferredObjectName, ReferredType )
+		--select object_schema_name(IDX.[object_id]), IDX.name, 'NCI', 'hard', object_schema_name(O.[object_id]), OBJECT_NAME(O.[object_id]), 'NCI'
+		select object_schema_name(IDX.[object_id]) as [object_schema_name]
+		, IDX.name as [object_name]
+		, 'NCI' as object_type
+		, object_schema_name(O.[object_id]) as table_schema
+		, OBJECT_NAME(O.[object_id]) as table_name
+		from sys.indexes as IDX
+		inner join sys.objects as O on IDX.[object_id] = O.[object_id]
+		where O.type_desc = 'USER_TABLE'
+		and IDX.type_desc <> 'CLUSTERED'
+		and IDX.name is not null -- filter out heaps
+		and O.name = @ObjectName
+		union
+		-- fk_name -> referencING table (alter table [referencING] add constraint fk_name ... references [referencED])
+		SELECT  object_schema_name(fk.object_id) as [object_schema_name]
+		, fk.name as [object_name]
+		, fk.type as object_type
+		, object_schema_name(tbl.object_id) as table_schema
+		, OBJECT_NAME(tbl.[object_id]) as table_name
+		FROM    sys.foreign_keys AS fk
+		INNER JOIN sys.tables AS tbl ON tbl.object_id = fk.parent_object_id
+		where tbl.name = @ObjectName
+	)
+	INSERT  INTO @References (ObjectPath, ObjectSchema, ObjectName, ObjectType, iteration) -- ( ThePath, TheFullEntityName, TheType, iteration )
+	SELECT --DISTINCT
+		'/dbo.' + @ObjectName + '/' + CTI.[object_schema_name] + '.' + CTI.[object_name]
+		,CTI.[object_schema_name], CTI.[object_name], CTI.object_type, 0
+	from cte_current_table_info as CTI
+
+
 RETURN
 END
 go
 
 /*
-select * from deps_it_depends('dbo', 'TABLE_NAME', 1)
+select * from deps_it_depends('dbo', 'table_name', 1)
 */
 
 IF OBJECT_ID (N'dbo.deps_generate_create_and_drop_index') IS NOT NULL
