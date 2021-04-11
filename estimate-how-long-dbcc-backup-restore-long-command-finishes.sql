@@ -26,4 +26,6 @@ as completion_time_hms
 FROM sys.dm_exec_requests as R
 inner join sys.databases as D on R.database_id=D.database_id
 cross apply sys.dm_exec_sql_text(R.[sql_handle]) as T
-WHERE R.percent_complete > 0
+WHERE lower(R.command) like '%dbcc%'
+	or lower(R.command) like '%backup%'
+	or lower(R.command) like '%restore%'
