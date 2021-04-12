@@ -1,10 +1,14 @@
+
 declare @sql_jobs_errors_after datetime = dateadd(day, -7, current_timestamp)
+
 set nocount on
 begin try
 	drop table #job_history
 end try begin catch end catch
-print 'Show SQL job agent failures on server: ' + @@servername
+
+print 'Showing SQL job agent failures on server: ' + @@servername
 print ''
+
 ;with cteJobHistory as (
 	select
 	job_id
@@ -38,9 +42,12 @@ inner join msdb.dbo.sysjobs as J on H.job_id = J.job_id
 where H.run_status <> 1
 and H.step_id = 0
 and msdb.dbo.agent_datetime(H.run_date, H.run_time) > @sql_jobs_errors_after
+
 alter table #job_history add processed bit
 update #job_history set processed = 0
+
 --select * from #job_history
+
 declare @job_id uniqueidentifier
 declare @previous_job_id uniqueidentifier
 declare @instance_id int
@@ -49,6 +56,7 @@ declare @previous_instance_id int
 --declare @i int
 declare @run_status varchar(1)
 declare @v varchar(8000)
+
 set @previous_job_id = null
 while exists(select * from #job_history where processed = 0)
 begin
@@ -57,7 +65,7 @@ begin
 	,@job_id = job_id
 	from #job_history
 	where processed = 0
-	order by job_name
+	order by job_step_timestamp
 	update #job_history set processed = 1 where instance_id = @instance_id
 	if @previous_job_id is null or @previous_job_id <> @job_id
 	begin
@@ -66,6 +74,7 @@ begin
 		set @v = 'Job name: ' + (select [job_name] from #job_history where instance_id = @instance_id) print @v
 	end
 	set @previous_job_id = @job_id
+
 	--print 'got here.1'
 	begin try
 		drop table #job_steps
@@ -116,4 +125,6 @@ begin
 		if charindex('deadlock victim', @v) > 0
 			print 'Note: may have been a deadlock victim'
 	end
+	
 end
+
