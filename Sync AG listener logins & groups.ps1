@@ -1,6 +1,9 @@
 
 <#
 Sync logins, login settings, and login permissions on secondaries that match logins on the primary
+
+Known bugs:
+Seems to be unable to change the secondary login's "Enforce password policy" and "Enforce password expiration" settings at times.
 #>
 
 set-strictmode -version latest # - require variable declaration
@@ -165,6 +168,7 @@ $objInstances | ForEach-Object {
                     $strPrimary_DefaultDatabase = $objMatchPrimaryLogin.DefaultDatabase
                     $strPrimary_Language = $objMatchPrimaryLogin.Language
                     $bolPrimary_PasswordExpirationEnabled = $objMatchPrimaryLogin.PasswordExpirationEnabled
+                    $bolPrimary_MustChangePassword = $objMatchPrimaryLogin.MustChangePassword
                     $bolPrimary_IsEnabled = -not $objMatchPrimaryLogin.IsDisabled
                     $bolPrimary_GrantLogin = -not $objMatchPrimaryLogin.DenyWindowsLogin
 
@@ -176,13 +180,25 @@ $objInstances | ForEach-Object {
                         $strSecondary_DefaultDatabase = $objMatchSecondaryLogin.DefaultDatabase
                         $strSecondary_Language = $objMatchSecondaryLogin.Language
                         $bolSecondary_PasswordExpirationEnabled = $objMatchSecondaryLogin.PasswordExpirationEnabled
+                        $bolSecondary_MustChangePassword = $objMatchSecondaryLogin.MustChangePassword
                         $bolSecondary_IsEnabled = -not $objMatchSecondaryLogin.IsDisabled
                         $bolSecondary_GrantLogin = -not $objMatchSecondaryLogin.DenyWindowsLogin
 
                         # - update existing logins
                         if ($strPrimary_Name -eq $strSecondary_Name) {
                             # - login names match
-                            if ($strPrimary_PasswordHash -ne $strSecondary_PasswordHash -and $bolPrimary_PasswordPolicyEnforced -eq $false -and $bolSecondary_PasswordPolicyEnforced -eq $false) {
+                            if ($bolPrimary_PasswordPolicyEnforced -ne $bolSecondary_PasswordPolicyEnforced) {
+                                # - password policies don't match
+                                #w -string "PasswordPolicyEnforced"
+                                try {
+                                    set-dbalogin -SqlInstance $strSecondaryReplica_Name -Login $strSecondary_Name -PasswordPolicyEnforced:$bolPrimary_PasswordPolicyEnforced `
+                                        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+                                    w -string "Login: [$strSecondary_Name] - Copied PasswordPolicyEnforced from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
+                                } catch {
+                                    report_error -err $_ -warning $warning -message "ERROR: Unable to set password policy for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
+                                }
+                            }
+                            if ($strPrimary_PasswordHash -ne $strSecondary_PasswordHash <#-and $bolPrimary_PasswordPolicyEnforced -eq $false -and $bolSecondary_PasswordPolicyEnforced -eq $false#>) {
                                 # - password hashes don't match
                                 $strSQLCommand = "alter login [$strSecondary_Name] with password = $strPrimary_PasswordHash hashed;"
                                 #Write-Output "Command: $strSQLCommand$strCR"
@@ -194,15 +210,26 @@ $objInstances | ForEach-Object {
                                     report_error -err $_ -warning $warning -message "ERROR: Unable to set password hash for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
                                 }
                             }
-                            if ($bolPrimary_PasswordPolicyEnforced -ne $bolSecondary_PasswordPolicyEnforced) {
-                                # - password policies don't match
-                                #w -string "PasswordPolicyEnforced"
+                            if ($bolPrimary_MustChangePassword -ne $bolSecondary_MustChangePassword) {
+                                # - "must change password at next login" settings don't match
+                                #w -string "Must change password at next login setting doesn't match"
                                 try {
-                                    set-dbalogin -SqlInstance "$strSecondaryReplica_Name" -Login $strSecondary_Name -PasswordPolicyEnforced:$bolPrimary_PasswordPolicyEnforced `
+                                    set-dbalogin -SqlInstance $strSecondaryReplica_Name -Login $strSecondary_Name -MustChange:$bolPrimary_MustChangePassword `
                                         -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
-                                    w -string "Login: [$strSecondary_Name] - Copied PasswordPolicyEnforced from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
+                                    w -string "Login: [$strSecondary_Name] - Copied 'Must change password at next login' setting from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
                                 } catch {
-                                    report_error -err $_ -warning $warning -message "ERROR: Unable to set password policy for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
+                                    report_error -err $_ -warning $warning -message "ERROR: Unable to set 'Must change password at next login' setting for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
+                                }
+                            }
+                            if ($bolPrimary_PasswordExpirationEnabled -ne $bolSecondary_PasswordExpirationEnabled) {
+                                # - password expiration enabled settings don't match
+                                #w -string "Password expiration enabled"
+                                try {
+                                    set-dbalogin -SqlInstance $strSecondaryReplica_Name -Login $strSecondary_Name -PasswordExpirationEnabled:$bolPrimary_PasswordExpirationEnabled `
+                                        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+                                    w -string "Login: [$strSecondary_Name] - Copied default password expiration enabled setting from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
+                                } catch {
+                                    report_error -err $_ -warning $warning -message "ERROR: Unable to set password expiration enabled for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
                                 }
                             }
                             if ($strPrimary_DefaultDatabase -ne $strSecondary_DefaultDatabase) {
@@ -227,17 +254,6 @@ $objInstances | ForEach-Object {
                                     w -string "Login: [$strSecondary_Name] - Copied default language setting from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
                                 } catch {
                                     report_error -err $_ -warning $warning -message "ERROR: Unable to set default language for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
-                                }
-                            }
-                            if ($bolPrimary_PasswordExpirationEnabled -ne $bolSecondary_PasswordExpirationEnabled) {
-                                # - password expiration enabled settings don't match
-                                #w -string "Password expiration enabled"
-                                try {
-                                    set-dbalogin -SqlInstance $strSecondaryReplica_Name -Login $strSecondary_Name -PasswordExpirationEnabled:$bolPrimary_PasswordExpirationEnabled `
-                                        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
-                                    w -string "Login: [$strSecondary_Name] - Copied default password expiration enabled setting from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
-                                } catch {
-                                    report_error -err $_ -warning $warning -message "ERROR: Unable to set password expiration enabled for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
                                 }
                             }
                             if ($bolPrimary_IsEnabled -ne $bolSecondary_IsEnabled) {
