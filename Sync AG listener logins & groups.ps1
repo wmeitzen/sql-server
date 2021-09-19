@@ -6,6 +6,8 @@ Sync logins, login settings, and login permissions on secondaries that match log
 set-strictmode -version latest # - require variable declaration
 
 # - define functions
+
+# w - write to console
 function w {
     param (
         $string = $null
@@ -23,13 +25,17 @@ function w {
 
 }
 
+# - show errors, remove unneeded commentary
 function report_error {
     param (
         $err
         ,$warning
         ,[string] $message = ""
     )
-    $strWarning = $warning.message
+    $strWarning = ""
+    if ((Get-Member -InputObject $warning -Name message) -ne $null) {
+        $strWarning = $warning.message
+    }
     $strWarning = $strWarning.replace('The running command stopped because the preference variable "WarningPreference" or common parameter is set to Stop', '')
     $strErr_Message = $err.Exception.Message
     $strErr_Message = $strErr_Message.replace('The running command stopped because the preference variable "WarningPreference" or common parameter is set to Stop', '')
@@ -301,12 +307,12 @@ $objInstances | ForEach-Object {
 
         }
 
-        # - sync logins from primary to secondaries
+        # - sync login permissions from primary to secondaries
+        $strSecondaryReplicas_Name = $secondaryReplicas.Name
+        $strPrimaryLogins_Name = $primaryLogins.name
         try {
             # -Login $primaryLogins.name
             # -Destination $secondaryReplicas.Name
-            $strSecondaryReplicas_Name = $secondaryReplicas.Name
-            $strPrimaryLogins_Name = $primaryLogins.name
             Sync-DbaLoginPermission -Source $strPrimaryReplica_Name -Destination $strSecondaryReplicas_Name -Login $strPrimaryLogins_Name `
                 -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException `
                 | Out-Null
