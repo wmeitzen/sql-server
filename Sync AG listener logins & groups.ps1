@@ -291,7 +291,8 @@ $objInstances | ForEach-Object {
                     #-Login ($objNewLogins.Name)
                     $strNewLogins = $objNewLogins.Name
                     Copy-DbaLogin -Source $strPrimaryReplica_Name -Destination $strSecondaryReplica_Name -Login $strNewLogins `
-                        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+                        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException `
+                        | Out-Null
                     w -string "Logins: [$strNewLogins] - Copied new logins from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
                 } catch {
                     report_error -err $_ -warning $warning -message "ERROR: Unable to copy logins '$objNewLogins' from primary replica '$strPrimaryReplica_Name' to secondary replica '$strSecondaryReplica_Name'"
