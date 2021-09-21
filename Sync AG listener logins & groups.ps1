@@ -1,9 +1,9 @@
 
 <#
-Sync logins, login settings, and login permissions on secondaries that match logins on the primary
+Copy and sync logins, login settings, and login permissions from the primary to secondaries on an AG.
 
 Known bugs:
-Unable to copy password hash if "Must change password at next login" is enabled.
+Unable to copy password hash if "Must change password at next login" is enabled on the primary.
 #>
 
 set-strictmode -version latest # - require variable declaration
@@ -291,7 +291,7 @@ $objInstances | ForEach-Object {
                 try {
                     #-Login ($objNewLogins.Name)
                     $strNewLogins = $objNewLogins.Name
-                    Copy-DbaLogin -Source $strPrimaryReplica_Name -Destination $strSecondaryReplica_Name -Login $objNewLogins.Name `
+                    Copy-DbaLogin -Source $strPrimaryReplica_Name -Destination $strSecondaryReplica_Name -Login $strNewLogins `
                         -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
                     w -string "Logins: [$strNewLogins] - Copied new logins from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
                 } catch {
@@ -305,8 +305,6 @@ $objInstances | ForEach-Object {
         $strSecondaryReplicas_Name = $secondaryReplicas.Name
         $strPrimaryLogins_Name = $primaryLogins.name
         try {
-            # -Login $primaryLogins.name
-            # -Destination $secondaryReplicas.Name
             Sync-DbaLoginPermission -Source $strPrimaryReplica_Name -Destination $strSecondaryReplicas_Name -Login $strPrimaryLogins_Name `
                 -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException `
                 | Out-Null
