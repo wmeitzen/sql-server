@@ -1,8 +1,8 @@
 
 <#
-Copy and sync logins, login settings, and login permissions from the primary to secondaries on an AG.
+Copy and sync logins, groups, settings, and permissions from the primary to secondaries on an AG.
 
-Known bugs:
+Known bugs and issues:
 Unable to copy password hash if "Must change password at next login" is enabled on the primary.
 #>
 
@@ -187,7 +187,6 @@ $objInstances | ForEach-Object {
                         # - update existing logins
                         if ($strPrimary_Name -eq $strSecondary_Name) {
                             # - login names match
-                                <#-or $strPrimary_Language -ne $strSecondary_Language `#>
                             if ($strPrimary_PasswordHash -ne $strSecondary_PasswordHash) {
                                 # - password hashes don't match
                                 # - A HASHED password cannot be set for a login that has CHECK_POLICY turned on.
