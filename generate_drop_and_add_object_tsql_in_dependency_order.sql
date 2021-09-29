@@ -4,6 +4,7 @@ generates DROP and CREATE commands for all PKs, FKs, and
 indexes in dependency order below a user-specified TABLE_NAME.
 It does not execute the DROP or CREATE commands; it only generates the TSQL code.
 I used it to change about 300 datetime2 columns to datetime on a database with 11 levels of dependencies.
+Set your SSMS output to "results to text," with up to 8000 characters per column.
 
 Function deps_it_depends:
 Given a schema, table name (as a starting point), and hard-coded 1,
