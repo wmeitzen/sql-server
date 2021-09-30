@@ -57,11 +57,18 @@ function report_error {
 
 function install_powershell_modules {
 	if (!(get-module -ListAvailable -name DBATools)) {
-		w -string "DBATools powershell module is missing - installing it now - it will take a moment - this should happen only once"
+		w -string "DBATools powershell is missing - installing it now - it will take a moment - this should happen only once"
 		try {
-			Install-Package -name DBATools -Force | out-null
+			Install-Module -name DBATools -Force | out-null
 		} catch {
 			report_error -err $_ -message "ERROR: Unable to install DBATools module."
+		}
+	}
+	if (!(get-package -name DBATools)) {
+    	try {
+			Install-Package -name DBATools -Force | out-null
+		} catch {
+			report_error -err $_ -message "ERROR: Unable to install DBATools package."
 		}
 	}
 }
