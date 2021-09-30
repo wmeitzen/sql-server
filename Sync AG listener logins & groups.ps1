@@ -55,6 +55,25 @@ function report_error {
     w -style 'error' -string $strErr_ScriptStackTrace
 }
 
+function install_powershell_modules {
+	if (!(get-module -ListAvailable -name DBATools)) {
+		w -string "DBATools powershell module is missing - installing it now - it will take a moment - this should happen only once"
+		try {
+			Install-Package -name DBATools -Force | out-null
+		} catch {
+			report_error -err $_ -message "ERROR: Unable to install DBATools module."
+		}
+	}
+}
+
+
+install_powershell_modules
+
+if (!(get-module -ListAvailable -name DBATools)) {
+	w -string "DBATools powershell module is missing. Aborting."
+    exit
+}
+
 try {
     $objInstances = Find-DbaInstance -ComputerName localhost `
         -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
@@ -320,4 +339,3 @@ $objInstances | ForEach-Object {
         }
     }
 }
-
