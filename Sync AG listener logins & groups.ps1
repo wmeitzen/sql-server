@@ -3,7 +3,9 @@
 Copy and sync logins, groups, settings, and permissions from the primary to secondaries on an AG.
 
 Known bugs and issues:
-Unable to copy password hash if "Must change password at next login" is enabled on the primary.
+#. Unable to copy password hash if "Must change password at next login" is enabled on the primary.
+#. Has trouble syncing to a secondary with a named instance, non-default port, or both.
+
 #>
 
 set-strictmode -version latest # - require variable declaration
