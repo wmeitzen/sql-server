@@ -77,7 +77,7 @@ function install_powershell_modules {
 install_powershell_modules
 
 if (!(get-module -ListAvailable -name DBATools)) {
-	w -string "DBATools powershell module is missing. Aborting."
+	w -string "DBATools powershell module is missing and could not be installed. Try opening a powershell window as an administrator and running this command: 'Install-Module -name DBATools -Force'. Aborting."
     exit
 }
 
