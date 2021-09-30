@@ -133,6 +133,7 @@ $objInstances | ForEach-Object {
         }
 
         #$secondaryReplicas | Select-Object -Property *
+        #exit
 
         $strPrimaryReplica_Name = $primaryReplica.Name
 
@@ -165,7 +166,7 @@ $objInstances | ForEach-Object {
             #-SqlInstance $strSecondaryReplica_Name
 
             # - hard-code the port number - TEST
-            if ($strSecondaryReplica_Name -eq 'SQL03\INSTANCE03') { $strSecondaryReplica_Name = $strSecondaryReplica_Name + ',50001' }
+            #if ($strSecondaryReplica_Name -eq 'SQL03\INSTANCE03') { $strSecondaryReplica_Name = $strSecondaryReplica_Name + ',50001' }
 
             try {
                 $secondaryLogins = Get-DbaLogin -Detailed -SqlInstance $strSecondaryReplica_Name -ExcludeFilter '##*','NT *','BUILTIN*', '*$' `
@@ -335,7 +336,11 @@ $objInstances | ForEach-Object {
 
         # - sync login permissions from primary to secondaries
         $strSecondaryReplicas_Name = $secondaryReplicas.Name
+        w -string "secondaryReplicas.Name:"
+        w -string $secondaryReplicas.Name
+        #$strSecondaryReplicas_Name = 'SQL03\INSTANCE03,50001' # - for testing
         $strPrimaryLogins_Name = $primaryLogins.name
+        w -string "strSecondaryReplicas_Name: $strSecondaryReplicas_Name"
         try {
             Sync-DbaLoginPermission -Source $strPrimaryReplica_Name -Destination $strSecondaryReplicas_Name -Login $strPrimaryLogins_Name `
                 -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException `
