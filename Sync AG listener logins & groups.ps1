@@ -1,8 +1,10 @@
 <#
 Copy and sync logins, groups, settings, and permissions from the primary to secondaries on an AG.
+
 Known bugs and issues:
 #. Unable to copy password hash if "Must change password at next login" is enabled on the primary.
 #. Has trouble syncing to a secondary with a named instance, non-default port, or both.
+
 #>
 
 set-strictmode -version latest # - require variable declaration
@@ -31,12 +33,12 @@ function w {
 function report_error {
     param (
         $err
-        ,$objWarning
+        ,$warning
         ,[string] $message = ""
     )
     $strWarning = ""
-    if ((Get-Member -InputObject $objWarning -Name message) -ne $null) {
-        $strWarning = $objWarning.message
+    if ((Get-Member -InputObject $warning -Name message) -ne $null) {
+        $strWarning = $warning.message
     }
     $strWarning = $strWarning.replace('The running command stopped because the preference variable "WarningPreference" or common parameter is set to Stop', '')
     $strErr_Message = $err.Exception.Message
@@ -71,7 +73,6 @@ function install_powershell_modules {
 		}
 	}
 }
-
 
 install_powershell_modules
 
@@ -340,13 +341,18 @@ $objInstances | ForEach-Object {
         #$strSecondaryReplicas_Name = 'SQL03\INSTANCE03,50001' # - for testing
         $strPrimaryLogins_Name = $primaryLogins.name
         w -string "strSecondaryReplicas_Name: $strSecondaryReplicas_Name"
+        $objSyncDBALoginPermissions = $null
         try {
-            Sync-DbaLoginPermission -Source $strPrimaryReplica_Name -Destination $strSecondaryReplicas_Name -Login $strPrimaryLogins_Name `
+            $objSyncDBALoginPermissions = Sync-DbaLoginPermission -Source $strPrimaryReplica_Name -Destination $strSecondaryReplicas_Name -Login $strPrimaryLogins_Name `
                 -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException `
                 | Out-Null
             w -string "Logins: [$strPrimaryLogins_Name] - Synced login permissions from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
         } catch {
-            report_error -err $_ -warning $objWarning -message "ERROR: Unable to sync logins '$primaryLogins' from primary replica '$strPrimaryReplica_Name' to secondary replica '$strSecondaryReplica_Name'"
+            report_error -err $_ -warning $objWarning -message "ERROR: Unable to sync logins '$strPrimaryLogins_Name' from primary replica '$strPrimaryReplica_Name' to secondary replica '$strSecondaryReplica_Name'"
         }
+        #$objSyncDBALoginPermissions | Select-Object -Property *
+        #write-host $objSyncDBALoginPermissions
+        # - looks like nothing is returned from Sync-DbaLoginPermission
     }
 }
+
