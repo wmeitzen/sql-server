@@ -1,11 +1,8 @@
-
 <#
 Copy and sync logins, groups, settings, and permissions from the primary to secondaries on an AG.
-
 Known bugs and issues:
 #. Unable to copy password hash if "Must change password at next login" is enabled on the primary.
 #. Has trouble syncing to a secondary with a named instance, non-default port, or both.
-
 #>
 
 set-strictmode -version latest # - require variable declaration
@@ -34,12 +31,12 @@ function w {
 function report_error {
     param (
         $err
-        ,$warning
+        ,$objWarning
         ,[string] $message = ""
     )
     $strWarning = ""
-    if ((Get-Member -InputObject $warning -Name message) -ne $null) {
-        $strWarning = $warning.message
+    if ((Get-Member -InputObject $objWarning -Name message) -ne $null) {
+        $strWarning = $objWarning.message
     }
     $strWarning = $strWarning.replace('The running command stopped because the preference variable "WarningPreference" or common parameter is set to Stop', '')
     $strErr_Message = $err.Exception.Message
@@ -85,9 +82,9 @@ if (!(get-module -ListAvailable -name DBATools)) {
 
 try {
     $objInstances = Find-DbaInstance -ComputerName localhost `
-        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+        -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException
 } catch {
-    report_error -err $_ -warning $warning -message "ERROR: Unable to find the instance on 'localhost'. Aborting."
+    report_error -err $_ -warning $objWarning -message "ERROR: Unable to find the instance on 'localhost'. Aborting."
     exit
 }
 
@@ -99,9 +96,9 @@ $objInstances | ForEach-Object {
     try {
         #
         $objAGListeners = Get-DbaAgListener -SqlInstance $objInstance `
-            -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+            -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException
     } catch {
-        report_error -err $_ -warning $warning -message "ERROR: Unable to find an availability group listener on '$objInstance'. Aborting."
+        report_error -err $_ -warning $objWarning -message "ERROR: Unable to find an availability group listener on '$objInstance'. Aborting."
         exit
     }
 
@@ -118,19 +115,19 @@ $objInstances | ForEach-Object {
 
         try {
             $primaryReplica = Get-DbaAgReplica -SqlInstance $strAGListenerName `
-                -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException `
+                -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException `
                 | Where Role -eq Primary | Sort-Object Name -Unique
         } catch {
-            report_error -err $_ -warning $warning -message "ERROR: Unable to obtain the AG primary replica on listener '$strAGListenerName'. Aborting."
+            report_error -err $_ -warning $objWarning -message "ERROR: Unable to obtain the AG primary replica on listener '$strAGListenerName'. Aborting."
             exit
         }
 
         try {
             $secondaryReplicas = Get-DbaAgReplica -SqlInstance $strAGListenerName `
-                -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException `
+                -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException `
                 | Where Role -eq Secondary | Sort-Object Name -Unique
         } catch {
-            report_error -err $_ -warning $warning -message "ERROR: Unable to obtain listener '$strAGListenerName' AG secondary replicas"
+            report_error -err $_ -warning $objWarning -message "ERROR: Unable to obtain listener '$strAGListenerName' AG secondary replicas"
             exit
         }
 
@@ -142,17 +139,17 @@ $objInstances | ForEach-Object {
         # primary replica logins
         try {
             $primaryLogins = Get-DbaLogin -Detailed -SqlInstance $primaryReplica.Name -ExcludeFilter '##*','NT *','BUILTIN*', '*$' `
-                -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+                -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException
         } catch {
-            report_error -err $_ -warning $warning -message "ERROR: Unable to retrieve logins from primary replica '$primaryReplica'. Aborting."
+            report_error -err $_ -warning $objWarning -message "ERROR: Unable to retrieve logins from primary replica '$primaryReplica'. Aborting."
             exit
         }
 
         try {
             $primaryReplicaServerRoles = Get-DbaServerRole -SqlInstance $primaryReplica.Name `
-                -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+                -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException
         } catch {
-            report_error -err $_ -warning $warning -message "ERROR: Unable to retrieve server roles from primary replica '$primaryReplica'. Aborting."
+            report_error -err $_ -warning $objWarning -message "ERROR: Unable to retrieve server roles from primary replica '$primaryReplica'. Aborting."
             exit
         }
         #$primaryReplicaServerRoles | Select-Object -Property *
@@ -172,17 +169,17 @@ $objInstances | ForEach-Object {
 
             try {
                 $secondaryLogins = Get-DbaLogin -Detailed -SqlInstance $strSecondaryReplica_Name -ExcludeFilter '##*','NT *','BUILTIN*', '*$' `
-                    -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+                    -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException
             } catch {
-                report_error -err $_ -warning $warning -message "ERROR: Unable to retrieve logins from secondary replica '$strSecondaryReplica_Name'. Aborting."
+                report_error -err $_ -warning $objWarning -message "ERROR: Unable to retrieve logins from secondary replica '$strSecondaryReplica_Name'. Aborting."
                 exit
             }
 
             try {
                 $secondaryReplicaServerRoles = Get-DbaServerRole -SqlInstance $strSecondaryReplica_Name `
-                    -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+                    -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException
             } catch {
-                report_error -err $_ -warning $warning -message "ERROR: Unable to retrieve server roles from secondary replica '$strSecondaryReplica_Name'. Aborting."
+                report_error -err $_ -warning $objWarning -message "ERROR: Unable to retrieve server roles from secondary replica '$strSecondaryReplica_Name'. Aborting."
                 exit
             }
             #$secondaryReplicaServerRoles | Select-Object -Property *
@@ -231,22 +228,22 @@ $objInstances | ForEach-Object {
                                     Set-DbaLogin -SqlInstance $strSecondaryReplica_Name -Login $strSecondary_Name `
                                         -PasswordPolicyEnforced:$false `
                                         -PasswordExpirationEnabled:$false `
-                                        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException `
+                                        -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException `
                                         | Out-Null
                                     $bolSecondary_PasswordPolicyEnforced = $false
                                     $bolSecondary_PasswordExpirationEnabled = $false
                                 } catch {
-                                    report_error -err $_ -warning $warning -message "ERROR: Prerequisite failed: Unable to enforce password policy on secondary replica '$strSecondaryReplica_Name' before changing password hash for login '$strSecondary_Name'"
+                                    report_error -err $_ -warning $objWarning -message "ERROR: Prerequisite failed: Unable to enforce password policy on secondary replica '$strSecondaryReplica_Name' before changing password hash for login '$strSecondary_Name'"
                                 }
                                 $strSQLCommand = "alter login [$strSecondary_Name] with password = $strPrimary_PasswordHash hashed;"
                                 #Write-Output "Command: $strSQLCommand$strCR"
                                 #w -string "Set hashed password"
                                 try {
                                     Invoke-DbaQuery -SqlInstance $strSecondaryReplica_Name -Query $strSQLCommand `
-                                        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+                                        -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException
                                     w -string "Login: [$strSecondary_Name] - Copied password hash from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
                                 } catch {
-                                    report_error -err $_ -warning $warning -message "ERROR: Unable to set password hash for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
+                                    report_error -err $_ -warning $objWarning -message "ERROR: Unable to set password hash for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
                                 }
                             }
                             if (
@@ -292,11 +289,11 @@ $objInstances | ForEach-Object {
                                         -PasswordPolicyEnforced:$bolPrimary_PasswordPolicyEnforced `
                                         -PasswordExpirationEnabled:$bolPrimary_PasswordExpirationEnabled `
                                         @Enable @Disable @GrantLogin @DenyLogin @MustChange `
-                                        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException `
+                                        -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException `
                                         | Out-Null
                                     w -string "Login: [$strSecondary_Name] - Copied properties from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
                                 } catch {
-                                    report_error -err $_ -warning $warning -message "ERROR: Unable to copy properties for login '$strSecondary_Name' to secondary replica '$strSecondaryReplica_Name'"
+                                    report_error -err $_ -warning $objWarning -message "ERROR: Unable to copy properties for login '$strSecondary_Name' to secondary replica '$strSecondaryReplica_Name'"
                                 }
                             }
                             
@@ -307,10 +304,10 @@ $objInstances | ForEach-Object {
                                 #Write-Output "Command: $strSQLCommand$strCR"
                                 try {
                                     Invoke-DbaQuery -SqlInstance $strSecondaryReplica_Name -Query $strSQLCommand `
-                                        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException
+                                        -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException
                                     w -string "Login: [$strSecondary_Name] - Copied default language setting from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
                                 } catch {
-                                    report_error -err $_ -warning $warning -message "ERROR: Unable to set default language for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
+                                    report_error -err $_ -warning $objWarning -message "ERROR: Unable to set default language for login '$strSecondary_Name' on secondary replica '$strSecondaryReplica_Name'"
                                 }
                             }
                         }
@@ -326,11 +323,11 @@ $objInstances | ForEach-Object {
                     #-Login ($objNewLogins.Name)
                     $strNewLogins = $objNewLogins.Name
                     Copy-DbaLogin -Source $strPrimaryReplica_Name -Destination $strSecondaryReplica_Name -Login $strNewLogins `
-                        -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException `
+                        -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException `
                         | Out-Null
                     w -string "Logins: [$strNewLogins] - Copied new logins from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
                 } catch {
-                    report_error -err $_ -warning $warning -message "ERROR: Unable to copy logins '$objNewLogins' from primary replica '$strPrimaryReplica_Name' to secondary replica '$strSecondaryReplica_Name'"
+                    report_error -err $_ -warning $objWarning -message "ERROR: Unable to copy logins '$objNewLogins' from primary replica '$strPrimaryReplica_Name' to secondary replica '$strSecondaryReplica_Name'"
                 }
             }
 
@@ -345,11 +342,11 @@ $objInstances | ForEach-Object {
         w -string "strSecondaryReplicas_Name: $strSecondaryReplicas_Name"
         try {
             Sync-DbaLoginPermission -Source $strPrimaryReplica_Name -Destination $strSecondaryReplicas_Name -Login $strPrimaryLogins_Name `
-                -WarningAction Stop -WarningVariable warning -ErrorAction stop -EnableException `
+                -WarningAction Stop -WarningVariable objWarning -ErrorAction stop -EnableException `
                 | Out-Null
             w -string "Logins: [$strPrimaryLogins_Name] - Synced login permissions from $strPrimaryReplica_Name to $strSecondaryReplica_Name"
         } catch {
-            report_error -err $_ -warning $warning -message "ERROR: Unable to sync logins '$primaryLogins' from primary replica '$strPrimaryReplica_Name' to secondary replica '$strSecondaryReplica_Name'"
+            report_error -err $_ -warning $objWarning -message "ERROR: Unable to sync logins '$primaryLogins' from primary replica '$strPrimaryReplica_Name' to secondary replica '$strSecondaryReplica_Name'"
         }
     }
 }
