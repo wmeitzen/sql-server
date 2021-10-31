@@ -1,4 +1,4 @@
-SELECT 
+SELECT
 R.session_id
 ,R.command
 ,D.name as [database_name]
@@ -13,15 +13,26 @@ as completion_datetime_to_minute
 cast((R.estimated_completion_time / (1000*60*60)) % 24 as varchar(10))+' hr ' else '' end
 +case when (R.estimated_completion_time / (1000*60*60)) % 24>0 or R.estimated_completion_time / (1000*60) % 60>0 then
 cast(R.estimated_completion_time / (1000*60) % 60 as varchar(2))+' min ' else '' end
-+case when R.estimated_completion_time <= 10 *60*1000 then cast(R.estimated_completion_time / 1000 % 60 as varchar(2))+' sec' else ''
-end as completion_time_flex
-,case when (R.estimated_completion_time / (1000*60*60)) % 24>0 then
-cast((R.estimated_completion_time / (1000*60*60)) % 24 as varchar(10))+' hr ' else '' end
-+case when (R.estimated_completion_time / (1000*60*60)) % 24>0 or R.estimated_completion_time / (1000*60) % 60>0 then
-cast(R.estimated_completion_time / (1000*60) % 60 as varchar(2))+' min ' else '' end
 +cast(R.estimated_completion_time / 1000 % 60 as varchar(2))+' sec'
-as completion_time_hms
-,cast(R.percent_complete as integer) as percent_complete_int
+as remaining_hms_desc
+,case
+when (R.estimated_completion_time + 30 *(60 *1000)) > 14 *(24 *60*60*1000)
+	then '> 14 days'
+when (R.estimated_completion_time + 30 *(60 *1000)) >= 2 *(24 *60*60*1000) then -- >= 2: show days (plural) + hr
+	cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (24 *60*60*1000)) as varchar(2)) + ' days ' + cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (60 *60*1000)) % 24 as varchar(2)) + ' hr'
+when (R.estimated_completion_time + 30 *(60 *1000)) >= 1 *(24 *60*60*1000) then -- >= 1: show day (singular) + hr
+	cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (24 *60*60*1000)) as varchar(2)) + ' day ' + cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (60 *60*1000)) % 24 as varchar(2)) + ' hr'
+when (R.estimated_completion_time + 30 *1000) >= 1 *(60 *60*1000) then -- >=1 hr, show hr + min
+	cast(floor((R.estimated_completion_time + 30 *1000) / (60 *60*1000)) as varchar(2)) + ' hr ' + cast(floor((R.estimated_completion_time + 30 *1000) / (60 *1000)) % 60 as varchar(2)) + ' min'
+when (R.estimated_completion_time) >= 15 *(60 *1000) then -- >= 15 min, show min only
+	cast(floor((R.estimated_completion_time) / (60 *1000)) as varchar(2)) + ' min'
+when (R.estimated_completion_time + 0.5 *1000) >= 1 *(60 *1000) then -- >= 1 min, show min + sec
+	cast(floor((R.estimated_completion_time + 0.5 *1000) / (60 *1000)) % 60 as varchar(2)) + ' min ' + cast(floor((R.estimated_completion_time + 0.5 *1000) / 1000) % 60 as varchar(2)) + ' sec'
+when (R.estimated_completion_time + 0.5 *1000) >= 1 *1000 then -- >= 1 sec, show sec only
+	cast(floor((R.estimated_completion_time + 0.5 *1000) / 1000) % 60 as varchar(2)) + ' sec'
+else '< 1 sec'
+end as remaining_desc
+,round(R.percent_complete, 0) as percent_complete_int
 ,cast(R.percent_complete as numeric(20, 1)) as percent_complete_one_decimal_place
 FROM sys.dm_exec_requests as R
 inner join sys.databases as D on R.database_id=D.database_id
