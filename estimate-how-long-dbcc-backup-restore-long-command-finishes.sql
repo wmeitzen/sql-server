@@ -19,15 +19,19 @@ as remaining_hms_desc
 when (R.estimated_completion_time + 30 *(60 *1000)) > 14 *(24 *60*60*1000)
 	then '> 14 days'
 when (R.estimated_completion_time + 30 *(60 *1000)) >= 2 *(24 *60*60*1000) then -- >= 2: show days (plural) + hr
-	cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (24 *60*60*1000)) as varchar(2)) + ' days ' + cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (60 *60*1000)) % 24 as varchar(2)) + ' hr'
+	cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (24 *60*60*1000)) as varchar(2)) + ' days ' 
+	+ cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (60 *60*1000)) % 24 as varchar(2)) + ' hr'
 when (R.estimated_completion_time + 30 *(60 *1000)) >= 1 *(24 *60*60*1000) then -- >= 1: show day (singular) + hr
-	cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (24 *60*60*1000)) as varchar(2)) + ' day ' + cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (60 *60*1000)) % 24 as varchar(2)) + ' hr'
+	cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (24 *60*60*1000)) as varchar(2)) + ' day ' 
+	+ cast(floor((R.estimated_completion_time + 30 *(60 *1000)) / (60 *60*1000)) % 24 as varchar(2)) + ' hr'
 when (R.estimated_completion_time + 30 *1000) >= 1 *(60 *60*1000) then -- >=1 hr, show hr + min
-	cast(floor((R.estimated_completion_time + 30 *1000) / (60 *60*1000)) as varchar(2)) + ' hr ' + cast(floor((R.estimated_completion_time + 30 *1000) / (60 *1000)) % 60 as varchar(2)) + ' min'
+	cast(floor((R.estimated_completion_time + 30 *1000) / (60 *60*1000)) as varchar(2)) + ' hr ' 
+	+ cast(floor((R.estimated_completion_time + 30 *1000) / (60 *1000)) % 60 as varchar(2)) + ' min'
 when (R.estimated_completion_time) >= 15 *(60 *1000) then -- >= 15 min, show min only
 	cast(floor((R.estimated_completion_time) / (60 *1000)) as varchar(2)) + ' min'
 when (R.estimated_completion_time + 0.5 *1000) >= 1 *(60 *1000) then -- >= 1 min, show min + sec
-	cast(floor((R.estimated_completion_time + 0.5 *1000) / (60 *1000)) % 60 as varchar(2)) + ' min ' + cast(floor((R.estimated_completion_time + 0.5 *1000) / 1000) % 60 as varchar(2)) + ' sec'
+	cast(floor((R.estimated_completion_time + 0.5 *1000) / (60 *1000)) % 60 as varchar(2)) + ' min ' 
+	+ cast(floor((R.estimated_completion_time + 0.5 *1000) / 1000) % 60 as varchar(2)) + ' sec'
 when (R.estimated_completion_time + 0.5 *1000) >= 1 *1000 then -- >= 1 sec, show sec only
 	cast(floor((R.estimated_completion_time + 0.5 *1000) / 1000) % 60 as varchar(2)) + ' sec'
 else '< 1 sec'
