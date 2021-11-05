@@ -1,4 +1,5 @@
 
+
 /*
 Given the database name and ratio of log file to data file (.ldf to .mdf),
 show whether the log file needs to be resized,
@@ -58,13 +59,13 @@ from sys.master_files
 where db_name(database_id) = @strDatabaseName
 and type_desc = 'LOG'
 
-declare @intSizeInMB bigint
-select @intSizeInMB = size/128.0 -- size in mb
+declare @intMDFSizeInMB bigint
+select @intMDFSizeInMB = size/128.0 -- size in mb
 from sys.master_files
 where db_name(database_id) = @strDatabaseName
 and type_desc = 'ROWS'
 
-declare @intRecommendedMaxLogSize bigint = @intSizeInMB * @fltLogFilePercentageOfDataFile
+declare @intRecommendedMaxLogSize bigint = @intMDFSizeInMB * @fltLogFilePercentageOfDataFile
 
 declare @intLogSizeInMB bigint
 select @intLogSizeInMB = size/128.0 -- size in mb
@@ -73,22 +74,22 @@ where db_name(database_id) = @strDatabaseName
 and type_desc = 'LOG'
 
 declare @intCurrentLogFilePercentageOfDataFile int
-set @intCurrentLogFilePercentageOfDataFile = ((0.0+@intLogSizeInMB) / @intSizeInMB) * 100
+set @intCurrentLogFilePercentageOfDataFile = ((0.0+@intLogSizeInMB) / @intMDFSizeInMB) * 100
 declare @strCurrentLogFilePercentageOfDataFile varchar(3) = cast(@intCurrentLogFilePercentageOfDataFile as varchar(3))
 
 declare @intAutogrowthIncrementsMB bigint
-if @intSizeInMB <= 256
+if @intMDFSizeInMB <= 256
 	set @intAutogrowthIncrementsMB = 128
-else if @intSizeInMB <= 1024
+else if @intMDFSizeInMB <= 1024
 	set @intAutogrowthIncrementsMB = 512
-else if @intSizeInMB <= 10000 -- 10G
+else if @intMDFSizeInMB <= 10000 -- 10G
 	set @intAutogrowthIncrementsMB = 1024
-else if @intSizeInMB <= 1000000 -- 1T
+else if @intMDFSizeInMB <= 1000000 -- 1T
 	set @intAutogrowthIncrementsMB = 4096
 else
 	set @intAutogrowthIncrementsMB = 8192
 
-select '/*', @intSizeInMB as [--Database Size In MB]
+select '/*', @intMDFSizeInMB as [--Database Size In MB]
 , @intLogSizeInMB as [--Current Log File Size MB]
 , @strCurrentLogFilePercentageOfDataFile as [--Current Log Size %]
 , @strLogFilePercentageOfDataFile as [--Recommended Log Size %]
@@ -99,7 +100,7 @@ select '/*', @intSizeInMB as [--Database Size In MB]
 , @strRecoveryModelDesc as [--Recovery Model]
 , '*/'
 
-declare @strRunResizeProcess varchar(3) = 'No' -- assume we don't need to resize
+declare @strRunResizeLDFProcess varchar(3) = 'No' -- assume we don't need to resize
 if (@intLogSizeInMB > @intRecommendedMaxLogSize * 1.25
 	or @intLogSizeInMB < @intRecommendedMaxLogSize * 0.75
 	or @intCurrentVLFCount > 500
@@ -107,16 +108,18 @@ if (@intLogSizeInMB > @intRecommendedMaxLogSize * 1.25
 	or @intAutogrowthIncrementsMB > 1.1 * @intCurrentGrowthMB
 	)
 begin
-	set @strRunResizeProcess = 'YES'
+	set @strRunResizeLDFProcess = 'YES'
 end
 
-select '/* Time to resize log file?', @strRunResizeProcess as [--Yes or No], '*/'
+select '/* Time to resize log file?', @strRunResizeLDFProcess as [--Yes or No], '*/'
 
+/*
 if @strRecoveryModelDesc <> 'SIMPLE'
 	select 'use [master]
 go
 alter database [' + @strDatabaseName + '] set recovery simple with no_wait
 go' as [--Set database to simple recovery]
+*/
 
 select 'use [' + @strDatabaseName + ']
 go
@@ -130,7 +133,7 @@ go' as [--Set log file growth based on data file size]
 
 -- set log file to 20% of data file size
 -- do so with a series of resize commands
-declare @intLogFileSizeDestinationMB bigint = @fltLogFilePercentageOfDataFile * @intSizeInMB
+declare @intLogFileSizeDestinationMB bigint = @fltLogFilePercentageOfDataFile * @intMDFSizeInMB
 declare @intAlterDatabaseSizeMB bigint = 0
 declare @strAlterDatabaseSizeMB varchar(12)
 declare @strAlterDatabaseCommands nvarchar(max) = ''
@@ -139,16 +142,18 @@ begin
 	set @intAlterDatabaseSizeMB = @intAlterDatabaseSizeMB + @intAutogrowthIncrementsMB
 	set @strAlterDatabaseSizeMB = cast(@intAlterDatabaseSizeMB as varchar(12))
 	set @strAlterDatabaseCommands = @strAlterDatabaseCommands + 'alter database [' + @strDatabaseName + '] modify file (name = ''' + @strLogFileLogicalName + ''', size = ' + @strAlterDatabaseSizeMB + 'MB); '
-	set @strAlterDatabaseCommands = @strAlterDatabaseCommands + '-- ' + format((0.0 + @intAlterDatabaseSizeMB) / @intSizeInMB * 100, 'N1') + '% of data file size'
+	set @strAlterDatabaseCommands = @strAlterDatabaseCommands + '-- ' + format((0.0 + @intAlterDatabaseSizeMB) / @intMDFSizeInMB * 100, 'N1') + '% of data file size'
 	set @strAlterDatabaseCommands = @strAlterDatabaseCommands + char(13) + char(10) + 'go' + char(13) + char(10)
 end
 select @strAlterDatabaseCommands as [--AlterDatabaseCommands]
 
+/*
 if @strRecoveryModelDesc <> 'SIMPLE'
 	select 'use [master]
 go
 alter database [' + @strDatabaseName + '] set recovery full
 go' as [--Set database back to full recovery]
+*/
 
 set @strComment = ''
 set @strComment = @strComment + '-- #. Perform full backup (very important)' + char(13) + char(10)
