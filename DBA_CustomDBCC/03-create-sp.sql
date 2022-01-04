@@ -15,8 +15,10 @@ GO
 *Notes:  The purpose of this stored procedure is to run one or more DBCC commands as dictated by the parameters *
 *    passed at run-time. It has been designed to accommodate VLDBs. It is recommended to create this  *
 *    procedure in a dedicated administrative database rather than a system or application database.  *
-*Modifications: Logs commands, elapsed time, and errors. @maxDurationHrs can be fractions, to allow 0.5 for 30 min,
-* 1.25 for 1 hr 15 min, etc.
+*Modifications:
+* Logs commands, elapsed time, and errors.
+* @maxDurationHrs can be fractions, to allow 0.5 for 30 min, 1.25 for 1 hr 15 min, etc.
+* Moved @end calculation lower in code. Too small of @maxDurationHrs (0.0028 hrs or less, about 10 sec) will not run any commands.
 ********************************************************************************************************************/
 create PROCEDURE [dbo].[DBA_CustomDBCC] (
  @checkAlloc  BIT = 0,     -- Execute DBCC CHECKALLOC
@@ -75,8 +77,7 @@ SELECT @vldbMode = ISNULL(@vldbMode, 0), @physOnly = ISNULL(@physOnly, 0), @rest
 
   -- select getdate(), DATEADD(second, 0.005 * 60 * 60, GETDATE())
 
-SELECT @end = CASE @maxDurationHrs WHEN 0 THEN '9999-12-31 23:59:59:997' ELSE DATEADD(second, @maxDurationHrs * 60 * 60, GETDATE()) END,
-  @checkDB = CASE @vldbMode WHEN 0 THEN @checkDB ELSE 0 END,
+SELECT @checkDB = CASE @vldbMode WHEN 0 THEN @checkDB ELSE 0 END,
   @checkCat = CASE @checkDB WHEN 1 THEN 0 ELSE @checkCat END,
   @checkAlloc = CASE @checkDB WHEN 1 THEN 0 ELSE @checkAlloc END;
 
@@ -294,6 +295,8 @@ begin
   END
  END
 
+SELECT @end = CASE @maxDurationHrs WHEN 0 THEN '9999-12-31 23:59:59:997' ELSE DATEADD(second, @maxDurationHrs * 60 * 60, GETDATE()) END
+
  WHILE EXISTS ( SELECT c.*
      FROM [dbo].[DBA_CustomDBCC_CheckTableStatus] c
       INNER JOIN @db_tbl t ON c.databaseName = t.DatabaseName
@@ -374,7 +377,7 @@ END
 
 update dbo.DBA_CustomDBCC_CheckTableStatus SET
 elapsed_sec = datediff(second, startDate, endDate)
-where elapsed_sec is null
+--where elapsed_sec is null
 
 update dbo.DBA_CustomDBCC_CheckTableStatus SET
 elapsed_desc = 
@@ -399,7 +402,7 @@ elapsed_desc =
             cast(floor((elapsed_sec + 0.5 *@sec) / @sec) % 60 as varchar(2)) + ' sec'
         else '0 sec'
     end
-where elapsed_sec is not null and elapsed_desc is null
+--where elapsed_sec is not null and elapsed_desc is null
 
 IF @debugMode = 1
  UPDATE dbo.DBA_CustomDBCC_CheckTableStatus SET procFlag = 0, startDate = NULL, endDate = NULL WHERE procFlag IS NULL;
