@@ -421,5 +421,9 @@ EXEC DBAdmin.dbo.DBA_CustomDBCC
 ,@debugMode = 0 -- 0 = execute, 1 = print only, do not execute
 ,@vldbMode = 1 -- 1 = execute dbcc checktable
 ;
+
+select top 100 * from DBAdmin.dbo.DBA_CustomDBCC_CheckTableStatus
+order by startDate desc
+
 */
 
