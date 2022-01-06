@@ -1,6 +1,6 @@
 
 EXEC DBAdmin.dbo.DBA_CustomDBCC
-@maxDuration = 0.0028 -- hours; 0.0028 = 10 sec; 0 = run until completion
+@maxDurationHrs = 0.0028 -- hours; 0.0028 = 10 sec; 0 = run until completion
 ,@debugMode = 0 -- 0 = execute, 1 = print only, do not execute
 ,@vldbMode = 1 -- 1 = execute dbcc checktable
 ;
@@ -8,7 +8,7 @@ EXEC DBAdmin.dbo.DBA_CustomDBCC
 -- attribution: https://www.mssqltips.com/sqlservertip/3485/sql-server-dbcc-checkdb-checkcatalog-and-checkalloc-for-vldbs/
 -- run integrity check, and if incomplete, resume where it left off
 EXEC DBAdmin.dbo.DBA_CustomDBCC
-@maxDuration = 1 -- hours; 0 = run until completion
+@maxDurationHrs = 1 -- hours; 0 = run until completion
 ,@debugMode = 0 -- 0 = execute, 1 = print only, do not execute
 ,@vldbMode = 1 -- 1 = execute dbcc checktable
 ;
