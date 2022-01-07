@@ -411,7 +411,7 @@ SET @msg = CHAR(10) + CHAR(13) + 'DBCC job on ' + @@SERVERNAME + ' ended at ' + 
 -- show error codes
 IF exists(select * from dbo.DBA_CustomDBCC_CheckTableStatus where startDate >= @dteStartTime and [error_number] <> 0)
 BEGIN
-	print 'got here.1'
+	--print 'got here.1'
 	DECLARE ErrorCursor CURSOR FAST_FORWARD FOR
 		SELECT [error_number], [error_message]
 		FROM dbo.DBA_CustomDBCC_CheckTableStatus where startDate >= @dteStartTime
