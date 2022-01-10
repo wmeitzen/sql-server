@@ -13,7 +13,7 @@ EXEC DBAdmin.dbo.DBA_CustomDBCC
 ,@vldbMode = 1 -- 1 = execute dbcc checktable
 ;
 
---select top 100 * from DBAdmin.dbo.CheckTableStatus
+--select top 100 * from DBAdmin.dbo.DBA_CustomDBCC_CheckTableStatus order by startDate desc
 
 EXEC DBAdmin.[dbo].[DBA_CustomDBCC] 
             @checkAlloc = 0
