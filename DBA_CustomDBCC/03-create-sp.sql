@@ -16,7 +16,7 @@ GO
 *Modifications: Logs commands, elapsed time, and errors. @maxDurationHrs can be fractions, to allow 0.5 for 30 min,
 * 1.25 for 1 hr 15 min, etc.
 ********************************************************************************************************************/
-alter PROCEDURE [dbo].[DBA_CustomDBCC] (
+create PROCEDURE [dbo].[DBA_CustomDBCC] (
  @checkAlloc  BIT = 0,     -- Execute DBCC CHECKALLOC
  @checkCat  BIT = 0,     -- Execute DBCC CHECKCATALOG
  @checkDB  BIT = 1,     -- Execute DBCC CHECKDB (which includes CHECKALLOC and CHECKCATALOG)
