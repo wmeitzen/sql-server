@@ -1,7 +1,12 @@
-USE DBAdmin;
+if exists(select * from sys.tables where name = 'DBA_CustomDBCC_CheckTableStatus')
+	DROP TABLE [dbo].[DBA_CustomDBCC_CheckTableStatus]
 GO
 
-IF OBJECT_ID('[dbo].[DBA_CustomDBCC_CheckTableStatus]', 'U') IS NULL
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
 
 CREATE TABLE [dbo].[DBA_CustomDBCC_CheckTableStatus](
 	[checkTableID] [bigint] IDENTITY(1,1) NOT NULL,
@@ -17,11 +22,9 @@ CREATE TABLE [dbo].[DBA_CustomDBCC_CheckTableStatus](
 	[error_number] [int] NULL,
 	[error_message] [nvarchar](max) NULL
 )
+GO
 
-go
-
-if (SELECT OBJECTPROPERTY(OBJECT_ID(N'dbo.DBA_CustomDBCC_CheckTableStatus'),'TableHasPrimaryKey')) = 0
-begin
-	create nonclustered index nc_DBA_CheckTableStatus on DBA_CustomDBCC_CheckTableStatus (startDate)
-end
-
+CREATE CLUSTERED INDEX [IX_DBA_CustomDBCC_CheckTableStatus] ON [dbo].[DBA_CustomDBCC_CheckTableStatus] (
+	[checkTableID] ASC
+)
+GO
