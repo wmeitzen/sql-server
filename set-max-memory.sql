@@ -10,6 +10,7 @@ SELECT @intTotalPhysicalMemoryMB = [total_physical_memory_kb] / 1024 FROM [maste
 SELECT @int85PercentTotalPhysicalMemoryMB = ([total_physical_memory_kb] / 1024) * 0.85 FROM [master].[sys].[dm_os_sys_memory]
 SELECT @intMaxServerMemorySettingMB = cast(value_in_use as bigint) FROM sys.configurations where name = 'max server memory (MB)'
 
+print 'Server name: ' + @@servername
 print 'Total physical memory = ' + cast(@intTotalPhysicalMemoryMB as varchar(15)) + ' MB'
 print '85% of total physical memory = ' + cast(@int85PercentTotalPhysicalMemoryMB as varchar(15)) + ' MB'
 print 'Max Server Memory setting = ' + cast(@intMaxServerMemorySettingMB as varchar(15)) + ' MB'
