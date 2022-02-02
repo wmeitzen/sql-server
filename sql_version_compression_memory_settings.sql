@@ -40,12 +40,11 @@ end as enable_default_backup_compression
 ,(select [total_physical_memory_kb] / 1024 FROM [master].[sys].[dm_os_sys_memory]) as [server_physical_memory_mb]
 ,cast((select cast(value_in_use as bigint) FROM sys.configurations where name = 'max server memory (MB)')
 	/ (select [total_physical_memory_kb] / 1024.0 FROM [master].[sys].[dm_os_sys_memory]) * 100 as numeric(32, 1))
-	as ratio_max_mem_to_server_ram
+	as pct_max_mem_to_server_ram
 ,case
 	when (select cast(value_in_use as bigint) FROM sys.configurations where name = 'max server memory (MB)')
 	/ (select [total_physical_memory_kb] / 1024.0 FROM [master].[sys].[dm_os_sys_memory]) * 100 between 85 and 95 then 'no change'
 	else 'Adjust max_memory'
 end as max_server_memory_setting_needs_adjustment
---order by 2 desc
 
 
