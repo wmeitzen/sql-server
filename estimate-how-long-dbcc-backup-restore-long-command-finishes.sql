@@ -9,12 +9,6 @@ R.session_id
 	+':'+right('0'+cast(datepart(minute, dateadd(millisecond, R.estimated_completion_time, getdate())) as varchar(2)), 2)
 end
 as completion_datetime_to_minute
-,case when (R.estimated_completion_time / (1000*60*60)) % 24>0 then
-cast((R.estimated_completion_time / (1000*60*60)) % 24 as varchar(10))+' hr ' else '' end
-+case when (R.estimated_completion_time / (1000*60*60)) % 24>0 or R.estimated_completion_time / (1000*60) % 60>0 then
-cast(R.estimated_completion_time / (1000*60) % 60 as varchar(2))+' min ' else '' end
-+cast(R.estimated_completion_time / 1000 % 60 as varchar(2))+' sec'
-as remaining_hms_desc
 ,case
 when (R.estimated_completion_time + 30 *(60 *1000)) > 14 *(24 *60*60*1000)
 	then '> 14 days'
