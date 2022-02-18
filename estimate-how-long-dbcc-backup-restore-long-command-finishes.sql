@@ -28,7 +28,8 @@ when (R.estimated_completion_time + 0.5 *1000) >= 1 *(60 *1000) then -- >= 1 min
 	+ cast(floor((R.estimated_completion_time + 0.5 *1000) / 1000) % 60 as varchar(2)) + ' sec'
 when (R.estimated_completion_time + 0.5 *1000) >= 1 *1000 then -- >= 1 sec, show sec only
 	cast(floor((R.estimated_completion_time + 0.5 *1000) / 1000) % 60 as varchar(2)) + ' sec'
-else '< 1 sec'
+when R.percent_complete > 0 then '< 1 sec'
+else null
 end as remaining_desc
 ,round(R.percent_complete, 0) as percent_complete_int
 ,cast(R.percent_complete as numeric(20, 1)) as percent_complete_one_decimal_place
