@@ -1,5 +1,6 @@
 
-declare @fltCompressionMultiplier float = 0.5
+declare @fltCompressionMultiplier float
+set @fltCompressionMultiplier = 0.5
 
 SELECT /*top 10 percent*/
 D.name
