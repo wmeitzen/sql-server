@@ -36,4 +36,4 @@ FROM master.sys.master_files as F
 inner join sys.databases as D on F.database_id = D.database_id
 where D.name not in ('tempdb')
 group by D.name
-order by 2 desc
+order by sum(F.size) desc
