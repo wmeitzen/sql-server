@@ -47,11 +47,29 @@ set @strComment = @strComment + '-- #. Enable scheduled index rebuilds and other
 select @strComment as [--Steps]
 
 declare @intCurrentVLFCount as bigint
+
+/*
+-- does not work w/SQL 2012
 SELECT @intCurrentVLFCount = COUNT(l.database_id)
 FROM sys.databases s
 CROSS APPLY sys.dm_db_log_info(s.database_id) l
 where s.name = @strDatabaseName
 GROUP BY s.[name], s.database_id
+*/
+
+CREATE TABLE #stage(
+ [recovery_unit_id] INT
+ ,[file_id] INT
+ ,[file_size] BIGINT
+ ,[start_offset] BIGINT
+ ,[f_seq_no] BIGINT
+ ,[status] BIGINT
+ ,[parity] BIGINT
+ ,[create_lsn] NUMERIC(38)
+);
+INSERT INTO #stage EXECUTE (N'DBCC LogInfo WITH no_infomsgs');
+SELECT @intCurrentVLFCount = COUNT(1) FROM #stage;
+DROP TABLE #stage;
 
 declare @intCurrentGrowthMB as bigint
 select @intCurrentGrowthMB = cast(growth as bigint) * 8192 / power(2, 20)
