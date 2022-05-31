@@ -92,7 +92,7 @@ and type_desc = 'LOG'
 
 declare @intCurrentLogFilePercentageOfDataFile bigint
 set @intCurrentLogFilePercentageOfDataFile = ((0.0+@intLogSizeInMB) / @intMDFSizeInMB) * 100
-declare @strCurrentLogFilePercentageOfDataFile varchar(3) = cast(@intCurrentLogFilePercentageOfDataFile as varchar(3))
+declare @strCurrentLogFilePercentageOfDataFile varchar(6) = cast(@intCurrentLogFilePercentageOfDataFile as varchar(6))
 
 declare @intAutogrowthIncrementsMB bigint
 if @intMDFSizeInMB <= 256
