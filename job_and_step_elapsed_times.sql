@@ -45,13 +45,16 @@ end as job_elapsed_desc
 	else cast(jh.run_duration%100 as varchar) + ' sec' -- show seconds only
 	end 
 end as job_step_elapsed_desc
+-- in case you need to join on other columns
+,jh.job_id
+,jh.instance_id
 from msdb.dbo.sysjobs_view as jv
 inner join msdb.dbo.sysjobhistory jh ON jv.job_id = jh.job_id
 )
 select * from cteJobInfo
 where
 	is_job_outcome = 1 -- is_job_outcome = 1: show entire job; is_job_outcome = 0: show job steps
-	and job_name like 'ETL%'
+	--and job_name like 'ETL%'
 	and job_start_time > dateadd(day, -7, current_timestamp) -- in last week
-	and job_total_seconds > 10 -- job took longer than 10 sec
+	--and job_total_seconds > 10*60 -- job took longer than 10 sec
 
