@@ -7,6 +7,7 @@ D.name
 ,CONVERT(DECIMAL(10,2),sum((F.size * 8.00) / 1024.00 / 1024.00)) As UsedSpace_GB
 ,CONVERT(DECIMAL(10,2),sum((F.size * 8.00) / 1024.00)) As UsedSpace_MB
 ,case
+	when @@version like '%Express Edition%' then 0
 	when @@version like '%Server 2022%' then 1
 	when @@version like '%Server 2019%' then 1
 	when @@version like '%Server 2017%' then 1
