@@ -1,3 +1,4 @@
+
 declare @fltCompressionMultiplier float
 set @fltCompressionMultiplier = 0.5
 
@@ -18,6 +19,7 @@ D.name
 end as compression_available
 ,CONVERT(DECIMAL(10,2),sum((F.size * 8.00) / 1024.00 / 1024.00)
 	* case
+		when @@version like '%Express Edition%' then 1
 		when @@version like '%Server 2022%' then @fltCompressionMultiplier
 		when @@version like '%Server 2019%' then @fltCompressionMultiplier
 		when @@version like '%Server 2017%' then @fltCompressionMultiplier
@@ -28,6 +30,7 @@ end as compression_available
 	end) as approximate_compression_GB
 ,CONVERT(DECIMAL(10,2),sum((F.size * 8.00) / 1024.00)
 	* case
+		when @@version like '%Express Edition%' then 1
 		when @@version like '%Server 2022%' then @fltCompressionMultiplier
 		when @@version like '%Server 2019%' then @fltCompressionMultiplier
 		when @@version like '%Server 2017%' then @fltCompressionMultiplier
