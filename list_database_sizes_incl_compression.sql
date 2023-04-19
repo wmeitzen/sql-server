@@ -4,6 +4,7 @@ set @fltCompressionMultiplier = 0.5
 
 SELECT /*top 10 percent*/
 D.name
+,cast(D.create_date as date) as date_created
 , @@version as [@@version]
 ,CONVERT(DECIMAL(10,2),sum((F.size * 8.00) / 1024.00 / 1024.00)) As UsedSpace_GB
 ,CONVERT(DECIMAL(10,2),sum((F.size * 8.00) / 1024.00)) As UsedSpace_MB
@@ -42,5 +43,5 @@ end as compression_available
 FROM master.sys.master_files as F
 inner join sys.databases as D on F.database_id = D.database_id
 where D.name not in ('tempdb')
-group by D.name
+group by D.name, D.create_date
 order by sum(F.size) desc
