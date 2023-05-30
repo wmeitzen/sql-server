@@ -326,6 +326,10 @@ declare @dteStartTime datetime = current_timestamp
     ,startDate = GETDATE()
     WHERE checkTableID = @tblid;
     
+    set @Error = null
+    set @ErrorMessageOriginal = null
+    set @ErrorMessage = null
+
     BEGIN TRY
       --EXECUTE @sp_executesql @stmt = @Command
       EXEC sp_ExecuteSQL @stmt = @sql;
