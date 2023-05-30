@@ -304,16 +304,18 @@ declare @dteStartTime datetime = current_timestamp
      and @end > GETDATE() -- exit if we've exceeded our max time
      )
  BEGIN  
-  SELECT TOP 1 @tbl = '[' + c.databaseName + '].[' + c.schemaName + '].[' + c.tableName + ']', 
-      @sql = 'SET QUOTED_IDENTIFIER OFF SET ARITHABORT ON DBCC CHECKTABLE (' + CHAR(39) + @tbl + CHAR(39) + 
-      CASE @checkNdx WHEN 0 THEN ', NOINDEX' ELSE '' END + ') WITH ALL_ERRORMSGS, NO_INFOMSGS' + 
-      CASE @physOnly WHEN 1 THEN ', PHYSICAL_ONLY' ELSE '' END, @tblid = c.checkTableID
+  SELECT TOP 1 @tbl = '[' + c.databaseName + '].[' + c.schemaName + '].[' + c.tableName + ']'      
+	  , @tblid = c.checkTableID
   FROM [dbo].[DBA_CustomDBCC_CheckTableStatus] c
    INNER JOIN @db_tbl t ON c.databaseName = t.DatabaseName
   WHERE c.procFlag = 0
   AND LOWER(c.tableName) NOT IN ( SELECT LOWER([Value]) FROM dbo.DBA_CustomDBCC_CommaStringTable(@tblExcludeList) )
   AND LOWER(c.tableName) = LOWER(ISNULL(@tableName, c.tableName))
   ORDER BY c.databaseName, c.schemaName, c.tableName;
+
+  set @sql = 'SET QUOTED_IDENTIFIER OFF SET ARITHABORT ON DBCC CHECKTABLE (' + CHAR(39) + @tbl + CHAR(39) + 
+      CASE @checkNdx WHEN 0 THEN ', NOINDEX' ELSE '' END + ') WITH ALL_ERRORMSGS, NO_INFOMSGS' + 
+      CASE @physOnly WHEN 1 THEN ', PHYSICAL_ONLY' ELSE '' END
 
   -- Execute table-level DBCC commands
 --  BEGIN TRY
@@ -325,24 +327,33 @@ declare @dteStartTime datetime = current_timestamp
     command = @sql
     ,startDate = GETDATE()
     WHERE checkTableID = @tblid;
-    
+
     set @Error = null
-    set @ErrorMessageOriginal = null
-    set @ErrorMessage = null
+	set @ErrorMessageOriginal = null
+	set @ErrorMessage = null
 
-    BEGIN TRY
-      --EXECUTE @sp_executesql @stmt = @Command
-      EXEC sp_ExecuteSQL @stmt = @sql;
-    END TRY
-    BEGIN CATCH
-      SET @Error = ERROR_NUMBER()
-      SET @ErrorMessageOriginal = ERROR_MESSAGE()
+	if object_id(@tbl) is not null
+	begin
 
-      SET @ErrorMessage = 'Msg ' + CAST(ERROR_NUMBER() AS nvarchar) + ', ' + ISNULL(ERROR_MESSAGE(),'')
-      --SET @Severity = CASE WHEN ERROR_NUMBER() IN(1205,1222) THEN @LockMessageSeverity ELSE 16 END
-      --RAISERROR('%s' ,@Severity, 1, @ErrorMessage) WITH NOWAIT
+		BEGIN TRY
+		  EXEC sp_ExecuteSQL @stmt = @sql;
+		END TRY
+		BEGIN CATCH
+		  SET @Error = ERROR_NUMBER()
+		  SET @ErrorMessageOriginal = ERROR_MESSAGE()
 
-    END CATCH
+		  SET @ErrorMessage = 'Msg ' + CAST(ERROR_NUMBER() AS nvarchar) + ', ' + ISNULL(ERROR_MESSAGE(),'')
+		  --SET @Severity = CASE WHEN ERROR_NUMBER() IN(1205,1222) THEN @LockMessageSeverity ELSE 16 END
+		  --RAISERROR('%s' ,@Severity, 1, @ErrorMessage) WITH NOWAIT
+
+		END CATCH
+	end
+	else
+	begin
+		set @Error = -1
+		set @ErrorMessageOriginal = 'Table ' + @tbl + ' does not exist'
+		set @ErrorMessage = null
+	end
 
     UPDATE [dbo].[DBA_CustomDBCC_CheckTableStatus] SET
         procFlag = CASE ISNULL(OBJECT_ID(@tbl), 0) WHEN 0 THEN NULL
