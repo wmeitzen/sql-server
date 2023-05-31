@@ -16,7 +16,7 @@ GO
 *Modifications: Logs commands, elapsed time, and errors. @maxDurationHrs can be fractions, to allow 0.5 for 30 min,
 * 1.25 for 1 hr 15 min, etc.
 ********************************************************************************************************************/
-create PROCEDURE [dbo].[DBA_CustomDBCC] (
+alter PROCEDURE [dbo].[DBA_CustomDBCC] (
  @checkAlloc  BIT = 0,     -- Execute DBCC CHECKALLOC
  @checkCat  BIT = 0,     -- Execute DBCC CHECKCATALOG
  @checkDB  BIT = 1,     -- Execute DBCC CHECKDB (which includes CHECKALLOC and CHECKCATALOG)
@@ -43,7 +43,7 @@ DECLARE @db   VARCHAR(128),
   @tbl  VARCHAR(128),
   @tblid  INT;
 
-DECLARE @db_tbl  TABLE ( DatabaseName VARCHAR(128), ProcFlag  BIT DEFAULT(0) );
+DECLARE @db_tbl  TABLE ( DatabaseName VARCHAR(128), objectWasChecked  BIT DEFAULT(0) );
 
 DECLARE @check_tbl TABLE ( DatabaseName VARCHAR(128),
     SchemaName  VARCHAR(128),
@@ -129,7 +129,7 @@ INSERT INTO @db_tbl (DatabaseName)
 SELECT [name]
 FROM [master].sys.databases
 WHERE [source_database_id] IS NULL
-AND [database_id] <> 2
+AND [name] not in ('distribution', 'tempdb')
 AND DATABASEPROPERTYEX([name], 'Status') = 'ONLINE'
 AND LOWER([name]) = LOWER(ISNULL(@dbName, [name]));
 
@@ -152,16 +152,16 @@ BEGIN
  END
 END
 
-IF NOT EXISTS ( SELECT * FROM @db_tbl WHERE ProcFlag = 0 )
+IF NOT EXISTS ( SELECT * FROM @db_tbl WHERE objectWasChecked = 0 )
 BEGIN
  SET @msg = 'No databases match the supplied parameters. Procedure aborted at ' + CONVERT(VARCHAR, GETDATE()) + '.';
   RAISERROR(@msg, 0, 0) WITH NOWAIT;
    RETURN;
 END
 
-WHILE EXISTS ( SELECT * FROM @db_tbl WHERE ProcFlag = 0 )
+WHILE EXISTS ( SELECT * FROM @db_tbl WHERE objectWasChecked = 0 )
 BEGIN
- SELECT TOP 1 @db = DatabaseName FROM @db_tbl WHERE ProcFlag = 0 ORDER BY DatabaseName;
+ SELECT TOP 1 @db = DatabaseName FROM @db_tbl WHERE objectWasChecked = 0 ORDER BY DatabaseName;
 
  SET @dbclause = '[' + @db + CASE @checkNdx WHEN 1 THEN ']' ELSE '], NOINDEX' END;
 
@@ -222,24 +222,8 @@ BEGIN
    EXEC sp_ExecuteSQL @sql;
   END
 
-  UPDATE @db_tbl SET ProcFlag = 1 WHERE DatabaseName = @db;
-  /*
-  IF @end < GETDATE()
-  BEGIN
-   SET @msg = 'Procedure has exceeded max run time based on @maxDurationHrs parameter and will exit at ' + CONVERT(VARCHAR, GETDATE()) + '.';
-    RAISERROR(@msg, 0, 0) WITH NOWAIT;
-     RETURN;
-  END
-  */
- --END TRY
- /*
- BEGIN CATCH
-  SET @msg = 'Failed to execute command {' + @sql + '} against database {' + @db + '} with error number: ' + CAST(ERROR_NUMBER() AS VARCHAR) + 
-     '; error message: ' + ERROR_MESSAGE() + '.  Procedure terminated at ' + CONVERT(VARCHAR, GETDATE()) + '.';
-   RAISERROR(@msg, 16, 1) WITH LOG, NOWAIT;
-    RETURN(-1);  
- END CATCH
-*/
+  UPDATE @db_tbl SET objectWasChecked = 1 WHERE DatabaseName = @db;
+
 END
 
 IF @vldbMode = 1
@@ -250,14 +234,14 @@ begin
         return
     end
  ELSE
-  DELETE FROM [dbo].[DBA_CustomDBCC_CheckTableStatus] WHERE [endDate] < GETDATE() - 367 AND ISNULL([procFlag], 1) = 1;
+  DELETE FROM [dbo].[DBA_CustomDBCC_CheckTableStatus] WHERE [endDate] < GETDATE() - 367 AND ISNULL([objectWasChecked], 1) = 1;
 
  -- Check for outstanding CHECKTABLE commands
- IF EXISTS ( SELECT * FROM [dbo].[DBA_CustomDBCC_CheckTableStatus] WHERE [procFlag] = 0 )
+ IF EXISTS ( SELECT * FROM [dbo].[DBA_CustomDBCC_CheckTableStatus] WHERE [objectWasChecked] = 0 )
   SET @restart = 0;
 
  IF @restart = 1
-  INSERT INTO [dbo].[DBA_CustomDBCC_CheckTableStatus] ([databaseName], [schemaName], [tableName], [procFlag])
+  INSERT INTO [dbo].[DBA_CustomDBCC_CheckTableStatus] ([databaseName], [schemaName], [tableName], [objectWasChecked])
   SELECT DatabaseName, SchemaName, TableName, 0
   FROM @check_tbl c
   WHERE NOT EXISTS ( SELECT *
@@ -284,10 +268,10 @@ begin
     RAISERROR(@msg, 0, 0) WITH NOWAIT;
 
    UPDATE cts
-   SET cts.[procFlag] = NULL
+   SET cts.[objectWasChecked] = NULL
    FROM [dbo].[DBA_CustomDBCC_CheckTableStatus] cts
     INNER JOIN dbo.DBA_CustomDBCC_CommaStringTable(@tblExcludeList) cst ON LOWER(cts.tableName) = LOWER(cst.[Value])
-   WHERE ISNULL(cts.[procFlag], 0) = 0;
+   WHERE ISNULL(cts.[objectWasChecked], 0) = 0;
   END
  END
 
@@ -298,7 +282,7 @@ declare @dteStartTime datetime = current_timestamp
  WHILE EXISTS ( SELECT c.*
      FROM [dbo].[DBA_CustomDBCC_CheckTableStatus] c
       INNER JOIN @db_tbl t ON c.databaseName = t.DatabaseName
-     WHERE c.procFlag = 0
+     WHERE c.objectWasChecked = 0
      AND LOWER(c.tableName) = LOWER(ISNULL(@tableName, c.tableName))
 
      and @end > GETDATE() -- exit if we've exceeded our max time
@@ -308,7 +292,7 @@ declare @dteStartTime datetime = current_timestamp
 	  , @tblid = c.checkTableID
   FROM [dbo].[DBA_CustomDBCC_CheckTableStatus] c
    INNER JOIN @db_tbl t ON c.databaseName = t.DatabaseName
-  WHERE c.procFlag = 0
+  WHERE c.objectWasChecked = 0
   AND LOWER(c.tableName) NOT IN ( SELECT LOWER([Value]) FROM dbo.DBA_CustomDBCC_CommaStringTable(@tblExcludeList) )
   AND LOWER(c.tableName) = LOWER(ISNULL(@tableName, c.tableName))
   ORDER BY c.databaseName, c.schemaName, c.tableName;
@@ -356,15 +340,16 @@ declare @dteStartTime datetime = current_timestamp
 	end
 
     UPDATE [dbo].[DBA_CustomDBCC_CheckTableStatus] SET
-        procFlag = CASE ISNULL(OBJECT_ID(@tbl), 0) WHEN 0 THEN NULL
-            ELSE 1 END
+        --objectWasChecked = CASE ISNULL(OBJECT_ID(@tbl), 0) WHEN 0 THEN NULL ELSE 1 END
+		objectWasChecked = 1
         ,endDate = GETDATE()
         ,[error_number] = @Error
         ,[error_message] = @ErrorMessageOriginal
         WHERE checkTableID = @tblid;
    END
-   ELSE
-    UPDATE [dbo].[DBA_CustomDBCC_CheckTableStatus] SET procFlag = NULL WHERE checkTableID = @tblid;
+   ELSE --if object_id(@tbl) is not null / if table is missing
+    --UPDATE [dbo].[DBA_CustomDBCC_CheckTableStatus] SET objectWasChecked = NULL WHERE checkTableID = @tblid; -- original
+	UPDATE [dbo].[DBA_CustomDBCC_CheckTableStatus] SET objectWasChecked = 1 WHERE checkTableID = @tblid; -- new
 /*
    IF @end < GETDATE()
    BEGIN
@@ -418,12 +403,12 @@ elapsed_desc =
 --where elapsed_sec is not null and elapsed_desc is null
 
 IF @debugMode = 1
- UPDATE dbo.DBA_CustomDBCC_CheckTableStatus SET procFlag = 0, startDate = NULL, endDate = NULL WHERE procFlag IS NULL;
+ UPDATE dbo.DBA_CustomDBCC_CheckTableStatus SET objectWasChecked = 0, startDate = NULL, endDate = NULL WHERE objectWasChecked IS NULL;
 
 SET @msg = CHAR(10) + CHAR(13) + 'DBCC job on ' + @@SERVERNAME + ' ended at ' + CONVERT(VARCHAR, GETDATE()) + '.';
  RAISERROR(@msg, 0, 0) WITH NOWAIT;
 
--- show error codes
+-- show errors and error codes
 IF exists(select * from dbo.DBA_CustomDBCC_CheckTableStatus where startDate >= @dteStartTime and [error_number] <> 0)
 BEGIN
 	--print 'got here.1'
@@ -439,9 +424,14 @@ BEGIN
 
 	WHILE @@FETCH_STATUS = 0
 	BEGIN
-		RAISERROR('%s', 16, 1, @ErrorMessage) WITH NOWAIT
-		--RAISERROR('%s', 10, 1, @ErrorMessage) WITH NOWAIT
-		--RAISERROR(@EmptyLine, 10, 1) WITH NOWAIT
+		if @Error = -1 -- -1: table is missing
+		begin
+			print @ErrorMessage
+		end
+		else
+		begin
+			RAISERROR('%s', 16, 1, @ErrorMessage) WITH NOWAIT
+		end
 
 		FETCH NEXT FROM ErrorCursor INTO @Error, @ErrorMessage
 	END
