@@ -80,13 +80,13 @@ SELECT @checkDB = CASE @vldbMode WHEN 0 THEN @checkDB ELSE 0 END,
 -- Validate variables
 IF @dbName IS NOT NULL AND DB_ID(@dbName) IS NULL
 BEGIN
- SET @msg = 'Database {' + @dbName + '} does not exist. Procedure aborted at ' + CONVERT(VARCHAR, GETDATE()) + '.';
+ SET @msg = 'Database [' + @dbName + '] does not exist. Procedure aborted at ' + CONVERT(VARCHAR, GETDATE()) + '.';
   RAISERROR(@msg, 0, 0) WITH NOWAIT;
    RETURN;
 END
 ELSE
 BEGIN
- SET @msg = 'DBCC job will execute for a single database {' + @dbName + '}';
+ SET @msg = 'DBCC job will execute for a single database [' + @dbName + ']';
   RAISERROR(@msg, 0, 0) WITH NOWAIT;
 END
 
@@ -285,7 +285,7 @@ declare @dteStartTime datetime = current_timestamp
      WHERE c.objectWasChecked = 0
      AND LOWER(c.tableName) = LOWER(ISNULL(@tableName, c.tableName))
 
-     and @end > GETDATE() -- exit if we've exceeded our max time
+     and GETDATE() < @end -- exit if we've exceeded our max time
      )
  BEGIN  
   SELECT TOP 1 @tbl = '[' + c.databaseName + '].[' + c.schemaName + '].[' + c.tableName + ']'      
