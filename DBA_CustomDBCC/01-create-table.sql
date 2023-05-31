@@ -14,7 +14,7 @@ CREATE TABLE [dbo].[DBA_CustomDBCC_CheckTableStatus](
 	[schemaName] [nvarchar](128) NOT NULL,
 	[tableName] [nvarchar](128) NOT NULL,
 	[command] [nvarchar](1024) NULL,
-	[procFlag] [bit] NULL,
+	[objectWasChecked] [bit] NULL,
 	[startDate] [datetime] NULL,
 	[endDate] [datetime] NULL,
 	[elapsed_sec] [bigint] NULL,
