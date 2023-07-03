@@ -8,7 +8,7 @@ This script outputs TSQL commands, but does not execute the commands.
 I highly recommend running each TSQL command individually.
 
 Set query results to text
-Set Query / Query options / Results / Test / Max # of chars to 8000
+Set Query / Query options / Results / Text / Max # of chars to 8000
 Set @strDatabaseName to the database name
 Set @fltLogFilePercentageOfDataFile to the ratio of log file to data file (.ldf to .mdf)
 Run the script.
