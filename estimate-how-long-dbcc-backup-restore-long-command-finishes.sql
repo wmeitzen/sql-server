@@ -39,3 +39,5 @@ cross apply sys.dm_exec_sql_text(R.[sql_handle]) as T
 WHERE lower(R.command) like '%dbcc%'
 	or lower(R.command) like '%backup%'
 	or lower(R.command) like '%restore%'
+	or lower(R.command) like '%rollback%'
+	or lower(R.command) like '%killed%'
