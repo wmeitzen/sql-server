@@ -36,8 +36,14 @@ end as remaining_desc
 FROM sys.dm_exec_requests as R
 inner join sys.databases as D on R.database_id=D.database_id
 cross apply sys.dm_exec_sql_text(R.[sql_handle]) as T
-WHERE lower(R.command) like '%dbcc%'
+WHERE 	R.session_id <> @@SPID
+	and (
+	lower(R.command) like '%dbcc%'
+	or lower(T.[text]) like '%dbcc checkdb%'
+	or lower(T.[text]) like '%dbcc table%'
 	or lower(R.command) like '%backup%'
 	or lower(R.command) like '%restore%'
 	or lower(R.command) like '%rollback%'
 	or lower(R.command) like '%killed%'
+	)
+
