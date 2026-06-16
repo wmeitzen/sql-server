@@ -52,7 +52,6 @@ EXEC master.dbo.StatsOptimize @Command = 'STATSOPTIMIZEDATA_DDL';
 ```sql
 -- Preview (no changes)
 EXEC master.dbo.StatsOptimize
-    @Command = 'OPTIMIZE',
     @Databases = 'USER_DATABASES';
 
 -- Usage report
@@ -62,7 +61,6 @@ EXEC master.dbo.StatsOptimize
 
 -- Run with TF2371 and a 1-hour cap
 EXEC master.dbo.StatsOptimize
-    @Command = 'OPTIMIZE',
     @Databases = 'USER_DATABASES',
     @with_sample_percent = 'TF2371',
     @TimeLimit = 3600,
@@ -250,6 +248,13 @@ EXEC master.dbo.StatsOptimize
     @Databases = 'SalesDB',
     @with_sample_percent = '10',
     @Execute = 'Y';
+
+-- Update all databases except HUGE_TABLE_1 and HUGE_TABLE_2
+EXEC master.dbo.StatsOptimize
+    @Databases = 'ALL_DATABASES',
+    @Statistics = '%.%.%,-%.%.HUGE_TABLE_1,-%.%.HUGE_TABLE_2',
+    @Execute = 'Y';
+
 ```
 
 ## Operational notes
