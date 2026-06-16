@@ -11,7 +11,7 @@ CREATE PROCEDURE dbo.StatsOptimize
 	-- Command dispatch
 	@Command VARCHAR(20) = 'OPTIMIZE'           -- OPTIMIZE, SHOWUSAGE, STATSOPTIMIZEDATA_DDL (null/invalid prints help)
 	-- Target selection
-	,@Databases NVARCHAR(MAX) = null            -- Ola tokens: USER_DATABASES, ALL_DATABASES, CSV list, -Exclusion
+	,@Databases NVARCHAR(MAX) = 'USER_DATABASES'            -- Ola tokens: USER_DATABASES, ALL_DATABASES, CSV list, -Exclusion
 	,@Statistics NVARCHAR(MAX) = null           -- Ola-style: ALL_STATISTICS, 3-part DB.Schema.Object, 4-part DB.Schema.Object.Stat; % wildcards, -Exclusion; NULL = all
 	-- Usage model (drives cadence and priority order, never sample size)
 	,@UsageModel VARCHAR(20) = 'Continuous'     -- Continuous (usage-weighted) or None (size/staleness/churn only)
