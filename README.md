@@ -223,21 +223,30 @@ Three-part name of the snapshot table when mode is StatsOptimizeData.
 ## More examples
 
 ```sql
+-- Preview with defaults
 EXEC master.dbo.StatsOptimize
-    @Command = 'OPTIMIZE',
-    @Databases = 'SalesDB',
-    @Statistics = 'SalesDB.dbo.Customers',
+    @Databases = 'USER_DATABASES'
+
+-- Execute with defaults
+EXEC master.dbo.StatsOptimize
+    @Databases = 'USER_DATABASES',
     @Execute = 'Y';
 
+-- Update only the SalesDB database
+-- Customers table in all schemas, and dbo.Sales table
 EXEC master.dbo.StatsOptimize
-    @Command = 'OPTIMIZE',
+    @Databases = 'SalesDB',
+    @Statistics = '%.%.Customers, %.dbo.Sales',
+    @Execute = 'Y';
+
+-- Limit to 3600 seconds = 1 hr
+EXEC master.dbo.StatsOptimize
     @Databases = 'USER_DATABASES',
-    @UsageModel = 'None',
     @TimeLimit = 3600,
     @Execute = 'Y';
 
+-- Set all objects in SaleDB to 10% sample size
 EXEC master.dbo.StatsOptimize
-    @Command = 'OPTIMIZE',
     @Databases = 'SalesDB',
     @with_sample_percent = '10',
     @Execute = 'Y';
