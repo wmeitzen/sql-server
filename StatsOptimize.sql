@@ -11,13 +11,14 @@ CREATE PROCEDURE dbo.StatsOptimize
 	-- Command dispatch
 	@Command VARCHAR(20) = 'OPTIMIZE'           -- OPTIMIZE, SHOWUSAGE, STATSOPTIMIZEDATA_DDL (null/invalid prints help)
 	-- Target selection
-	,@Databases NVARCHAR(MAX) = 'USER_DATABASES'            -- Ola tokens: USER_DATABASES, ALL_DATABASES, CSV list, -Exclusion
+	,@Databases NVARCHAR(MAX) = null            -- Ola tokens: USER_DATABASES, ALL_DATABASES, CSV list, -Exclusion
 	,@Statistics NVARCHAR(MAX) = null           -- Ola-style: ALL_STATISTICS, 3-part DB.Schema.Object, 4-part DB.Schema.Object.Stat; % wildcards, -Exclusion; NULL = all
 	-- Usage model (drives cadence and priority order, never sample size)
 	,@UsageModel VARCHAR(20) = 'Continuous'     -- Continuous (usage-weighted) or None (size/staleness/churn only)
 	-- Sample size (driven by table SIZE, not popularity)
 	,@with_sample_percent NVARCHAR(10) = 'TF2371' -- 'TF2371' size curve, a numeric percent (forced), or NULL (no SAMPLE/FULLSCAN clause)
 	,@with_persist_sample_percent CHAR(1) = 'N' -- Y appends PERSIST_SAMPLE_PERCENT = ON (off by default on purpose)
+	,@RespectPersistedSample CHAR(1) = 'Y'  -- Y = honor a stat's persisted sample rate as desired (SQL 2019+); N = always use TF2371/@with_sample_percent
 	-- Update trigger thresholds
 	,@ModificationThreshold DECIMAL(5, 2) = 5.0 -- % rows modified since last update that triggers a refresh
 	,@SamplingGapTolerance DECIMAL(5, 2) = 2.0  -- "close enough" tolerance (pct points) between actual and desired sample
@@ -60,6 +61,7 @@ BEGIN
 	SET @Execute = UPPER(LTRIM(RTRIM(@Execute)));
 	SET @LogToTable = UPPER(LTRIM(RTRIM(@LogToTable)));
 	SET @with_persist_sample_percent = UPPER(LTRIM(RTRIM(@with_persist_sample_percent)));
+	SET @RespectPersistedSample = UPPER(LTRIM(RTRIM(@RespectPersistedSample)));
 	IF (@with_sample_percent IS NOT NULL) SET @with_sample_percent = LTRIM(RTRIM(@with_sample_percent));
 	IF (@Statistics IS NOT NULL) SET @Statistics = LTRIM(RTRIM(@Statistics));
 
@@ -165,6 +167,9 @@ BEGIN
 		PRINT '  @with_persist_sample_percent  Y appends PERSIST_SAMPLE_PERCENT=ON';
 		PRINT '               (OFF by default on purpose: a huge table plus auto';
 		PRINT '               stats update can trigger a costly mid-day refresh).';
+		PRINT '  @RespectPersistedSample  Y (default) means when a stat already has';
+		PRINT '               PERSIST_SAMPLE_PERCENT=ON (SQL 2019+), use its persisted';
+		PRINT '               rate as the desired floor instead of TF2371. N ignores it.';
 		PRINT '';
 		PRINT '=================================================================';
 		PRINT 'USAGE MODEL (cadence + priority)';
@@ -194,6 +199,7 @@ BEGIN
 		PRINT '  @UsageModel             Continuous (default) or None';
 		PRINT '  @with_sample_percent    TF2371 (default), a number, or NULL';
 		PRINT '  @with_persist_sample_percent  Y/N (default N)';
+		PRINT '  @RespectPersistedSample Y = honor a stat''s persisted rate as desired (def Y)';
 		PRINT '  @ModificationThreshold  % modified that triggers an update (def 5)';
 		PRINT '  @SamplingGapTolerance   Allowed gap vs desired sample % (def 2)';
 		PRINT '  @HotSkipHours/@ColdSkipHours  Cadence window ends (def 24 / 720)';
@@ -295,6 +301,12 @@ BEGIN
 	IF (@with_persist_sample_percent NOT IN ('Y', 'N'))
 	BEGIN
 		PRINT 'Error: @with_persist_sample_percent must be Y or N.';
+		RETURN;
+	END
+
+	IF (@RespectPersistedSample NOT IN ('Y', 'N'))
+	BEGIN
+		PRINT 'Error: @RespectPersistedSample must be Y or N.';
 		RETURN;
 	END
 
@@ -589,6 +601,8 @@ BEGIN
 		usage_percentile DECIMAL(9, 4) NULL,
 		tf2371_sample INT NULL,
 		desired_sampling_rate DECIMAL(5, 2) NULL,
+		has_persisted_sample BIT NULL,
+		persisted_sample_percent DECIMAL(5, 2) NULL,
 		effective_skip_hours INT NULL,
 		order_by_priority_score FLOAT NULL,
 		[started] DATETIME NULL,
@@ -599,6 +613,16 @@ BEGIN
 		IsCandidate BIT NOT NULL DEFAULT (0),
 		SkipReason VARCHAR(100) NULL
 	);
+
+	-- Detect whether sys.dm_db_stats_properties exposes persisted sample columns (SQL 2019+ / 2016 SP2 CU17+)
+	DECLARE @HasPersistedSampleSupport BIT = 0;
+	IF EXISTS (
+		SELECT 1
+		FROM sys.dm_exec_describe_first_result_set(
+			N'SELECT * FROM sys.dm_db_stats_properties(0, 0)', NULL, 0)
+		WHERE name = 'has_persisted_sample'
+	)
+		SET @HasPersistedSampleSupport = 1;
 
 	DECLARE @SQL NVARCHAR(MAX);
 	DECLARE @CurrentDb sysname;
@@ -628,7 +652,10 @@ INSERT INTO #StatsWork (
 	auto_created, user_created, is_index_stat,
 	last_updated, [Rows], rows_sampled, modification_counter,
 	sampled_pct, modified_pct, days_since_update,
-	cur_user_seeks, cur_user_scans, cur_user_lookups, cur_total_uses
+	cur_user_seeks, cur_user_scans, cur_user_lookups, cur_total_uses'
++ CASE WHEN @HasPersistedSampleSupport = 1
+	THEN N', has_persisted_sample, persisted_sample_percent'
+	ELSE N'' END + N'
 )
 SELECT
 	DB_NAME(),
@@ -660,7 +687,12 @@ SELECT
 			THEN ISNULL(ius.user_seeks, 0) + ISNULL(ius.user_scans, 0) + ISNULL(ius.user_lookups, 0)
 		 WHEN @p_AutoStatsMode = ''PARENTUSAGE''
 			THEN ISNULL(ou.obj_seeks, 0) + ISNULL(ou.obj_scans, 0) + ISNULL(ou.obj_lookups, 0)
-		 ELSE 0 END
+		 ELSE 0 END'
++ CASE WHEN @HasPersistedSampleSupport = 1
+	THEN N',
+	CAST(ISNULL(sp.has_persisted_sample, 0) AS BIT),
+	CAST(sp.persisted_sample_percent AS DECIMAL(5, 2))'
+	ELSE N'' END + N'
 FROM sys.stats AS s
 INNER JOIN sys.objects AS o ON s.object_id = o.object_id
 INNER JOIN sys.schemas AS sch ON o.schema_id = sch.schema_id
@@ -868,6 +900,22 @@ WHERE o.type IN (''U'', ''V'')
 	ELSE
 	BEGIN
 		UPDATE #StatsWork SET desired_sampling_rate = TRY_CONVERT(DECIMAL(5, 2), @with_sample_percent);
+	END
+
+	-- =============================================================
+	-- Override: respect persisted sample rate when the DBA explicitly
+	-- set PERSIST_SAMPLE_PERCENT = ON for a statistic (SQL 2019+).
+	-- The persisted rate becomes the desired floor; the "never
+	-- downgrade" gap logic is already one-directional, so a stat
+	-- already sampled above the persisted rate will not be re-sampled.
+	-- =============================================================
+	IF (@RespectPersistedSample = 'Y' AND @HasPersistedSampleSupport = 1)
+	BEGIN
+		UPDATE #StatsWork
+		SET desired_sampling_rate = persisted_sample_percent
+		WHERE has_persisted_sample = 1
+		  AND persisted_sample_percent IS NOT NULL
+		  AND persisted_sample_percent > 0;
 	END
 
 	-- =============================================================
