@@ -12,14 +12,14 @@
 -- =================================================================
 
 -- Command dispatch
-DECLARE @Command VARCHAR(20) = 'OPTIMIZE';            -- OPTIMIZE, SHOWUSAGE, STATSOPTIMIZEDATA_DDL (null/invalid prints help)
+DECLARE @Command VARCHAR(32) = 'OPTIMIZE';            -- OPTIMIZE, SHOWUSAGE, STATSOPTIMIZEDATA_DDL (null/invalid prints help)
 -- Target selection
 DECLARE @Databases NVARCHAR(MAX) = 'USER_DATABASES';              -- Ola tokens: USER_DATABASES, ALL_DATABASES, CSV list, -Exclusion
 DECLARE @Statistics NVARCHAR(MAX) = NULL --'ALL_STATISTICS,-%.%.%.%WA%';             -- Ola-style: ALL_STATISTICS, 3-part DB.Schema.Object, 4-part DB.Schema.Object.Stat; % wildcards, -Exclusion; NULL = all
 -- Usage model (drives cadence and priority order, never sample size)
 DECLARE @UsageModel VARCHAR(20) = 'Continuous';       -- Continuous (usage-weighted) or None (size/staleness/churn only)
 -- Sample size (driven by table SIZE, not popularity)
-DECLARE @with_sample_percent NVARCHAR(10) = 'TF2371'; -- 'TF2371' size curve, a numeric percent (forced), or NULL (no SAMPLE/FULLSCAN clause)
+DECLARE @with_sample_percent NVARCHAR(10) = 'TF2371'; -- 'TF2371' = size-adaptive curve (TF2371-style, not the trace flag's algorithm), a numeric percent (forced), or NULL (engine default)
 DECLARE @with_persist_sample_percent CHAR(1) = 'N';   -- Y appends PERSIST_SAMPLE_PERCENT = ON (off by default on purpose)
 DECLARE @RespectPersistedSample CHAR(1) = 'Y';        -- Y = honor a stat's persisted sample rate as desired (SQL 2019+); N = always use TF2371/@with_sample_percent
 -- Update trigger thresholds
@@ -161,7 +161,9 @@ BEGIN
 	PRINT 'SAMPLE SIZE (TF2371 curve)';
 	PRINT '=================================================================';
 	PRINT '  @with_sample_percent controls the SAMPLE clause:';
-	PRINT '    ''TF2371'' - CEILING(20.0 * POWER(rows / 25000.0, -0.265)).';
+	PRINT '    ''TF2371'' - size-adaptive sample curve. Named for the trace';
+	PRINT '               flag''s philosophy (big tables treated differently),';
+	PRINT '               not its formula. CEILING(20.0*POWER(rows/25000,-0.265)).';
 	PRINT '    <number> - force that integer SAMPLE percent for every stat.';
 	PRINT '               The percentage falls as the table grows; a result';
 	PRINT '               of 95 or more becomes WITH FULLSCAN.';
@@ -576,6 +578,8 @@ CREATE TABLE #StatsWork (
 	auto_created BIT NULL,
 	user_created BIT NULL,
 	is_index_stat BIT NOT NULL,
+	is_memory_optimized BIT NOT NULL DEFAULT (0),
+	is_columnstore BIT NOT NULL DEFAULT (0),
 	last_updated DATETIME2 NULL,
 	[Rows] BIGINT NULL,
 	rows_sampled BIGINT NULL,
@@ -641,7 +645,7 @@ GROUP BY ius.object_id
 )
 INSERT INTO #StatsWork (
 DatabaseName, SchemaName, ObjectName, object_id, StatsName, stats_id,
-auto_created, user_created, is_index_stat,
+auto_created, user_created, is_index_stat, is_memory_optimized, is_columnstore,
 last_updated, [Rows], rows_sampled, modification_counter,
 sampled_pct, modified_pct, days_since_update,
 cur_user_seeks, cur_user_scans, cur_user_lookups, cur_total_uses'
@@ -659,6 +663,8 @@ s.stats_id,
 s.auto_created,
 s.user_created,
 CASE WHEN i.index_id IS NOT NULL THEN 1 ELSE 0 END,
+ISNULL(t.is_memory_optimized, 0),
+CASE WHEN i.type IN (5, 6) THEN 1 ELSE 0 END,
 sp.last_updated,
 sp.rows,
 sp.rows_sampled,
@@ -693,6 +699,7 @@ LEFT OUTER JOIN sys.indexes AS i ON i.object_id = s.object_id AND i.index_id = s
 LEFT OUTER JOIN sys.dm_db_index_usage_stats AS ius
 ON ius.database_id = DB_ID() AND ius.object_id = s.object_id AND ius.index_id = s.stats_id
 LEFT OUTER JOIN ObjectUsage AS ou ON ou.object_id = s.object_id
+LEFT OUTER JOIN sys.tables AS t ON t.object_id = o.object_id
 WHERE o.type IN (''U'', ''V'')
 AND o.is_ms_shipped = 0
 AND sch.name <> ''sys'';';
@@ -990,6 +997,9 @@ BEGIN
 		ObjectName AS [object_name],
 		StatsName AS stats_name,
 		CASE WHEN is_index_stat = 1 THEN 'Index' ELSE 'Column' END AS kind,
+		CASE WHEN is_memory_optimized = 1 THEN 'Memory-Optimized'
+			 WHEN is_columnstore = 1 THEN 'Columnstore'
+			 ELSE 'Rowstore' END AS storage_type,
 		[Rows] AS [rows],
 		cur_total_uses,
 		uses_per_day,
@@ -1095,6 +1105,9 @@ SELECT
 	ObjectName AS [object_name],
 	StatsName AS stats_name,
 	CASE WHEN is_index_stat = 1 THEN 'Index' ELSE 'Column' END AS kind,
+	CASE WHEN is_memory_optimized = 1 THEN 'Memory-Optimized'
+		 WHEN is_columnstore = 1 THEN 'Columnstore'
+		 ELSE 'Rowstore' END AS storage_type,
 	[Rows] AS [rows],
 	uses_per_day,
 	usage_percentile,
@@ -1114,6 +1127,7 @@ ORDER BY order_by_priority_score DESC, DatabaseName, SchemaName, ObjectName, Sta
 -- Cursor over the selected statistics, in priority order
 DECLARE @od_Db sysname, @od_Schema sysname, @od_Object sysname, @od_Stats sysname;
 DECLARE @od_Desired DECIMAL(5, 2), @od_Rows BIGINT;
+DECLARE @od_IsMemOpt BIT, @od_IsColumnstore BIT;
 DECLARE @SamplePct INT, @StatCmd NVARCHAR(MAX), @SampleClause NVARCHAR(100);
 DECLARE @cmdStart DATETIME2, @cmdEnd DATETIME2, @errNum INT, @errMsg NVARCHAR(MAX);
 DECLARE @OptimizeStart DATETIME2 = SYSDATETIME();
@@ -1125,13 +1139,15 @@ DECLARE @PredictedSec FLOAT, @ElapsedSec BIGINT;
 IF (@CandidateCount > 0)
 BEGIN
 	DECLARE cur_Opt CURSOR LOCAL FAST_FORWARD FOR
-		SELECT DatabaseName, SchemaName, ObjectName, StatsName, desired_sampling_rate, [Rows]
+		SELECT DatabaseName, SchemaName, ObjectName, StatsName, desired_sampling_rate, [Rows],
+			is_memory_optimized, is_columnstore
 		FROM #StatsWork
 		WHERE IsCandidate = 1
 		ORDER BY order_by_priority_score DESC, DatabaseName, SchemaName, ObjectName, StatsName;
 
 	OPEN cur_Opt;
-	FETCH NEXT FROM cur_Opt INTO @od_Db, @od_Schema, @od_Object, @od_Stats, @od_Desired, @od_Rows;
+	FETCH NEXT FROM cur_Opt INTO @od_Db, @od_Schema, @od_Object, @od_Stats, @od_Desired, @od_Rows,
+		@od_IsMemOpt, @od_IsColumnstore;
 
 	WHILE @@FETCH_STATUS = 0
 	BEGIN
@@ -1142,7 +1158,24 @@ BEGIN
 		-- PERSIST_SAMPLE_PERCENT is appended only when explicitly requested.
 		-- Resolved before the time check so the row-scan estimate (and thus
 		-- the time prediction) reflects the sample size we will request.
-		IF (@od_Desired IS NULL)
+
+		-- Memory-optimized: SAMPLE and MAXDOP are not supported; force FULLSCAN
+		IF (@od_IsMemOpt = 1)
+		BEGIN
+			SET @SamplePct = 100;
+			SET @SampleClause = N' WITH FULLSCAN';
+		END
+		-- Columnstore: FULLSCAN is cheap (batch-mode reads) and produces better histograms
+		ELSE IF (@od_IsColumnstore = 1)
+		BEGIN
+			SET @SamplePct = 100;
+			SET @SampleClause = N' WITH FULLSCAN'
+				+ CASE WHEN @with_persist_sample_percent = 'Y' THEN N', PERSIST_SAMPLE_PERCENT = ON' ELSE N'' END;
+			IF (@MaxDOP IS NOT NULL)
+				SET @SampleClause = @SampleClause + N', MAXDOP = ' + CAST(@MaxDOP AS NVARCHAR(3));
+		END
+		-- Rowstore: normal sample-clause logic
+		ELSE IF (@od_Desired IS NULL)
 		BEGIN
 			SET @SamplePct = NULL;
 			SET @SampleClause = N'';
@@ -1161,8 +1194,8 @@ BEGIN
 				+ CASE WHEN @with_persist_sample_percent = 'Y' THEN N', PERSIST_SAMPLE_PERCENT = ON' ELSE N'' END;
 		END
 
-		-- Append MAXDOP hint if specified
-		IF (@MaxDOP IS NOT NULL)
+		-- Append MAXDOP hint if specified (rowstore only; columnstore handled above; memory-optimized cannot use it)
+		IF (@MaxDOP IS NOT NULL AND @od_IsMemOpt = 0 AND @od_IsColumnstore = 0)
 		BEGIN
 			IF (@SampleClause = N'')
 				SET @SampleClause = N' WITH MAXDOP = ' + CAST(@MaxDOP AS NVARCHAR(3));
@@ -1270,7 +1303,8 @@ BEGIN
 			PRINT '  [PREVIEW] ' + @StatCmd;
 		END
 
-		FETCH NEXT FROM cur_Opt INTO @od_Db, @od_Schema, @od_Object, @od_Stats, @od_Desired, @od_Rows;
+		FETCH NEXT FROM cur_Opt INTO @od_Db, @od_Schema, @od_Object, @od_Stats, @od_Desired, @od_Rows,
+			@od_IsMemOpt, @od_IsColumnstore;
 	END
 
 	CLOSE cur_Opt;
