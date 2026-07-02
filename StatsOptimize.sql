@@ -513,32 +513,43 @@ BEGIN
 	IF (@Statistics IS NOT NULL AND @Statistics <> ''
 		AND UPPER(@Statistics) <> 'ALL_STATISTICS')
 	BEGIN
+		-- CHARINDEX/SUBSTRING is used instead of PARSENAME so that wildcard
+		-- characters such as % are preserved exactly as written. PARSENAME
+		-- returns NULL for parts containing characters that are invalid in
+		-- unbracketed SQL Server identifiers (e.g. %), which silently drops
+		-- the filter row and causes tokens like '%.%.PART' to match nothing.
+		-- Layout: 3-part  DB.Schema.Object      (dot_count=2)
+		--         4-part  DB.Schema.Object.Stat (dot_count=3)
 		INSERT INTO #StatFilter (IsExclusion, DbPart, SchemaPart, ObjectPart, StatPart)
 		SELECT
 			CASE WHEN LEFT(t.val, 1) = '-' THEN 1 ELSE 0 END,
-			-- PARSENAME works right-to-left: part 4=leftmost, part 1=rightmost
-			-- 4-part (dots=3): DB.Schema.Object.Stat -> PARSENAME(x,4)=DB, (3)=Schema, (2)=Object, (1)=Stat
-			-- 3-part (dots=2): DB.Schema.Object      -> PARSENAME(x,3)=DB, (2)=Schema, (1)=Object; Stat=NULL
-			CASE WHEN LEN(t.clean) - LEN(REPLACE(t.clean, '.', '')) = 3
-				THEN PARSENAME(t.clean, 4)
-				ELSE PARSENAME(t.clean, 3) END,
-			CASE WHEN LEN(t.clean) - LEN(REPLACE(t.clean, '.', '')) = 3
-				THEN PARSENAME(t.clean, 3)
-				ELSE PARSENAME(t.clean, 2) END,
-			CASE WHEN LEN(t.clean) - LEN(REPLACE(t.clean, '.', '')) = 3
-				THEN PARSENAME(t.clean, 2)
-				ELSE PARSENAME(t.clean, 1) END,
-			CASE WHEN LEN(t.clean) - LEN(REPLACE(t.clean, '.', '')) = 3
-				THEN PARSENAME(t.clean, 1)
-				ELSE NULL END
+			SUBSTRING(t.clean, 1, t.d1 - 1),
+			SUBSTRING(t.clean, t.d1 + 1, t.d2 - t.d1 - 1),
+			CASE
+				WHEN t.dot_count = 3 THEN SUBSTRING(t.clean, t.d2 + 1, t.d3 - t.d2 - 1)
+				ELSE SUBSTRING(t.clean, t.d2 + 1, LEN(t.clean) - t.d2)
+			END,
+			CASE
+				WHEN t.dot_count = 3 THEN SUBSTRING(t.clean, t.d3 + 1, LEN(t.clean) - t.d3)
+				ELSE NULL
+			END
 		FROM (
 			SELECT
-				LTRIM(RTRIM(value)) AS val,
-				CASE WHEN LEFT(LTRIM(RTRIM(value)), 1) = '-'
-					 THEN LTRIM(RTRIM(SUBSTRING(LTRIM(RTRIM(value)), 2, 512)))
-					 ELSE LTRIM(RTRIM(value)) END AS clean
-			FROM STRING_SPLIT(@Statistics, ',')
-			WHERE LTRIM(RTRIM(value)) <> ''
+				val,
+				clean,
+				LEN(clean) - LEN(REPLACE(clean, '.', '')) AS dot_count,
+				CHARINDEX('.', clean) AS d1,
+				CHARINDEX('.', clean, CHARINDEX('.', clean) + 1) AS d2,
+				CHARINDEX('.', clean, CHARINDEX('.', clean, CHARINDEX('.', clean) + 1) + 1) AS d3
+			FROM (
+				SELECT
+					LTRIM(RTRIM(value)) AS val,
+					CASE WHEN LEFT(LTRIM(RTRIM(value)), 1) = '-'
+						 THEN LTRIM(RTRIM(SUBSTRING(LTRIM(RTRIM(value)), 2, 512)))
+						 ELSE LTRIM(RTRIM(value)) END AS clean
+				FROM STRING_SPLIT(@Statistics, ',')
+				WHERE LTRIM(RTRIM(value)) <> ''
+			) AS t0
 		) AS t
 		WHERE UPPER(t.clean) <> 'ALL_STATISTICS';
 
@@ -727,50 +738,6 @@ WHERE o.type IN (''U'', ''V'')
 	DEALLOCATE cur_Db;
 
 	-- =============================================================
-	-- Apply @Statistics inclusion/exclusion filter to #StatsWork
-	-- =============================================================
-	-- Inclusions: if any non-exclusion tokens exist, only keep rows
-	-- that match at least one inclusion token (Ola semantics).
-	IF (@HasStatInclusions = 1)
-	BEGIN
-		DELETE sw
-		FROM #StatsWork AS sw
-		WHERE NOT EXISTS (
-			SELECT 1
-			FROM #StatFilter AS f
-			WHERE f.IsExclusion = 0
-			  AND sw.DatabaseName LIKE f.DbPart
-			  AND sw.SchemaName LIKE f.SchemaPart
-			  AND sw.ObjectName LIKE f.ObjectPart
-			  AND (f.StatPart IS NULL OR sw.StatsName LIKE f.StatPart)
-		);
-	END
-
-	-- Exclusions: remove any row matching an exclusion token (exclusion wins).
-	IF EXISTS (SELECT 1 FROM #StatFilter WHERE IsExclusion = 1)
-	BEGIN
-		DELETE sw
-		FROM #StatsWork AS sw
-		WHERE EXISTS (
-			SELECT 1
-			FROM #StatFilter AS f
-			WHERE f.IsExclusion = 1
-			  AND sw.DatabaseName LIKE f.DbPart
-			  AND sw.SchemaName LIKE f.SchemaPart
-			  AND sw.ObjectName LIKE f.ObjectPart
-			  AND (f.StatPart IS NULL OR sw.StatsName LIKE f.StatPart)
-		);
-	END
-
-	IF NOT EXISTS (SELECT 1 FROM #StatsWork)
-	BEGIN
-		PRINT 'No statistics found for the requested databases / filters.';
-		DROP TABLE #StatsWork;
-		DROP TABLE #DatabaseList;
-		RETURN;
-	END
-
-	-- =============================================================
 	-- Read prior usage snapshot per statistic
 	-- (used to compute the usage delta between runs)
 	-- Mode: STATSOPTIMIZEDATA = flat table, COMMANDLOG = XML in
@@ -943,6 +910,59 @@ WHERE o.type IN (''U'', ''V'')
 	ELSE
 	BEGIN
 		UPDATE #StatsWork SET effective_skip_hours = @DefaultSkipHours;
+	END
+
+	-- =============================================================
+	-- Apply @Statistics inclusion/exclusion filter to #StatsWork
+	-- =============================================================
+	-- Applied AFTER percentile and cadence computation so that
+	-- effective_skip_hours reflects the full statistics universe, not
+	-- the filtered subset. Filtering first distorts cadences for narrow
+	-- filters: if only one table remains, all its stats tie for the same
+	-- uses_per_day, PERCENT_RANK collapses to 0, usage_percentile = 0,
+	-- and effective_skip_hours = @ColdSkipHours -- placing stats inside
+	-- the cadence window even when they would be candidates relative to
+	-- the full server workload.
+	-- =============================================================
+	-- Inclusions: if any non-exclusion tokens exist, only keep rows
+	-- that match at least one inclusion token (Ola semantics).
+	IF (@HasStatInclusions = 1)
+	BEGIN
+		DELETE sw
+		FROM #StatsWork AS sw
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM #StatFilter AS f
+			WHERE f.IsExclusion = 0
+			  AND sw.DatabaseName LIKE f.DbPart
+			  AND sw.SchemaName LIKE f.SchemaPart
+			  AND sw.ObjectName LIKE f.ObjectPart
+			  AND (f.StatPart IS NULL OR sw.StatsName LIKE f.StatPart)
+		);
+	END
+
+	-- Exclusions: remove any row matching an exclusion token (exclusion wins).
+	IF EXISTS (SELECT 1 FROM #StatFilter WHERE IsExclusion = 1)
+	BEGIN
+		DELETE sw
+		FROM #StatsWork AS sw
+		WHERE EXISTS (
+			SELECT 1
+			FROM #StatFilter AS f
+			WHERE f.IsExclusion = 1
+			  AND sw.DatabaseName LIKE f.DbPart
+			  AND sw.SchemaName LIKE f.SchemaPart
+			  AND sw.ObjectName LIKE f.ObjectPart
+			  AND (f.StatPart IS NULL OR sw.StatsName LIKE f.StatPart)
+		);
+	END
+
+	IF NOT EXISTS (SELECT 1 FROM #StatsWork)
+	BEGIN
+		PRINT 'No statistics found for the requested databases / filters.';
+		DROP TABLE #StatsWork;
+		DROP TABLE #DatabaseList;
+		RETURN;
 	END
 
 	-- =============================================================
